@@ -1,0 +1,21 @@
+# Gitで無視するファイル
+*.log
+*.tmp
+*.temp
+
+# バイナリファイル
+bin/
+*.exe
+
+# OS固有のファイル
+.DS_Store
+Thumbs.db
+
+# IDEの設定ファイル
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 環境変数ファイル
+.env
