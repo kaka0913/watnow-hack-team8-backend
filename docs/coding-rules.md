@@ -176,15 +176,23 @@ if err != nil {
 ### リポジトリパターン
 ```go
 // Good: リポジトリ実装
+type MeetingRoomRepository interface {
+    FindCandidateMeetingRooms(
+        officeName string, 
+        floor int, 
+        capacity int,
+    ) ([]domain.MeetingRoom, error)
+}
+
 type PostgresMeetingRoomRepository struct {
     Dbc *gorm.DB
 }
 
-func NewMeetingRoomRepository(db *gorm.DB) PostgresMeetingRoomRepository {
-    return PostgresMeetingRoomRepository{Dbc: db}
+func NewMeetingRoomRepository(db *gorm.DB) MeetingRoomRepository {
+    return &PostgresMeetingRoomRepository{Dbc: db}
 }
 
-func (repo PostgresMeetingRoomRepository) FindCandidateMeetingRooms(
+func (repo *PostgresMeetingRoomRepository) FindCandidateMeetingRooms(
     officeName string, 
     floor int, 
     capacity int,
