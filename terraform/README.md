@@ -122,15 +122,30 @@ terraform apply
    gcloud secrets create gemini-api-key --data-file=key.txt
    ```
 
-2. **terraform.tfvars ファイルの暗号化**
+2. **リモート状態管理**
+
+   ```hcl
+   terraform {
+     backend "gcs" {
+       bucket = "your-terraform-state-bucket"
+       prefix = "terraform/state"
+     }
+   }
+   ```
+
+3. **terraform.tfvars ファイルの暗号化**
 
    ```bash
    # git-cryptやSOPSを使用してtfvarsファイルを暗号化
    ```
 
-3. **最小権限の原則**
+4. **最小権限の原則**
    - 各サービスアカウントには必要最小限の権限のみ付与
    - ネットワークレベルでの制限（VPC など）
+   
+5. **アクセス制御**
+   - Terraformの実行は特定のCI/CDパイプラインのみに制限
+   - 開発者の直接的な本番環境アクセスを制限
 
 ## モニタリングとログ
 

@@ -19,3 +19,10 @@ Thumbs.db
 
 # 環境変数ファイル
 .env
+
+# Terraformファイル
+*.tfvars
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.lock.hcl
