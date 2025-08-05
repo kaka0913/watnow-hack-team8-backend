@@ -1,0 +1,14 @@
+# Environment specific values
+project_id = "your-project-id"
+region     = "asia-northeast1"
+
+# Database Configuration
+database_url = "postgresql://username:password@host:port/database"
+
+# API Keys
+google_maps_api_key = "your-google-maps-api-key"
+gemini_api_key      = "your-gemini-api-key"
+
+# Container Images
+app_server_image   = "gcr.io/your-project-id/app-server:latest"
+story_server_image = "gcr.io/your-project-id/story-server:latest"
