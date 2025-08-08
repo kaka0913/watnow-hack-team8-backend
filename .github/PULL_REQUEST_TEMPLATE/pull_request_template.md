@@ -1,16 +1,7 @@
----
-name: 📋 Pull Request Template
-about: Pull Request作成用テンプレート
-title: ""
-labels: ""
-assignees: ""
----
+## 関連Issue
 
-## チケットへのリンク
-
-<!-- 関連IssueのURLなど -->
-
-#{ここを消して Issue の番号を書く}
+<!-- 関連IssueのURLまたは番号を記載 -->
+Closes #
 
 ## やったこと
 
