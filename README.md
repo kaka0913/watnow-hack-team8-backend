@@ -30,9 +30,7 @@ go run main.go
 
 ### 依存関係のインストール
 
-```bash
-go mod tidy
-```
+
 
 ### ビルド
 
