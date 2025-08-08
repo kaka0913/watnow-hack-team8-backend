@@ -22,9 +22,14 @@ func NewSupabaseGridCellsRepository(client *database.SupabaseClient) GridCellsRe
 
 func (r *SupabaseGridCellsRepository) GetByID(ctx context.Context, id int) (*model.GridCell, error) {
 	var gridCells []model.GridCell
-	_, _, err := r.client.GetClient().From("grid_cells").Select("*", "exact", false).Eq("id", strconv.Itoa(id)).Execute()
+	data, count, err := r.client.GetClient().From("grid_cells").Select("*", "exact", false).Eq("id", strconv.Itoa(id)).Execute()
 	if err != nil {
 		return nil, fmt.Errorf("グリッドセルデータの取得失敗: %w", err)
+	}
+	_ = count // countは使わないが、構文エラーを避けるため
+
+	if err := json.Unmarshal([]byte(data), &gridCells); err != nil {
+		return nil, fmt.Errorf("グリッドセルデータのJSONアンマーシャル失敗: %w", err)
 	}
 
 	if len(gridCells) == 0 {
@@ -38,9 +43,14 @@ func (r *SupabaseGridCellsRepository) GetContainingPoint(ctx context.Context, la
 	// PostGIS ST_Contains関数を使用した空間検索
 	// ここでは簡易的な実装として、すべてのグリッドセルを取得
 	var gridCells []model.GridCell
-	_, _, err := r.client.GetClient().From("grid_cells").Select("*", "exact", false).Execute()
+	data, count, err := r.client.GetClient().From("grid_cells").Select("*", "exact", false).Execute()
 	if err != nil {
 		return nil, fmt.Errorf("指定座標を含むグリッドセルの取得失敗: %w", err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &gridCells); err != nil {
+		return nil, fmt.Errorf("グリッドセルデータのJSONアンマーシャル失敗: %w", err)
 	}
 
 	// TODO: 実際にはPostGISのST_Contains関数を使用して効率的に検索
@@ -56,9 +66,14 @@ func (r *SupabaseGridCellsRepository) GetContainingPoint(ctx context.Context, la
 func (r *SupabaseGridCellsRepository) GetByBoundingBox(ctx context.Context, minLng, minLat, maxLng, maxLat float64) ([]model.GridCell, error) {
 	// PostGIS ST_Intersects関数を使用した空間検索
 	var gridCells []model.GridCell
-	_, _, err := r.client.GetClient().From("grid_cells").Select("*", "exact", false).Execute()
+	data, count, err := r.client.GetClient().From("grid_cells").Select("*", "exact", false).Execute()
 	if err != nil {
 		return nil, fmt.Errorf("境界ボックス内グリッドセルの取得失敗: %w", err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &gridCells); err != nil {
+		return nil, fmt.Errorf("グリッドセルデータのJSONアンマーシャル失敗: %w", err)
 	}
 
 	// TODO: 実際にはPostGISのST_Intersects関数を使用して効率的に検索
@@ -105,9 +120,14 @@ func (r *SupabaseGridCellsRepository) Delete(ctx context.Context, id int) error 
 
 func (r *SupabaseGridCellsRepository) GetAll(ctx context.Context) ([]model.GridCell, error) {
 	var gridCells []model.GridCell
-	_, _, err := r.client.GetClient().From("grid_cells").Select("*", "exact", false).Execute()
+	data, count, err := r.client.GetClient().From("grid_cells").Select("*", "exact", false).Execute()
 	if err != nil {
 		return nil, fmt.Errorf("全グリッドセルデータの取得失敗: %w", err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &gridCells); err != nil {
+		return nil, fmt.Errorf("グリッドセルデータのJSONアンマーシャル失敗: %w", err)
 	}
 
 	return gridCells, nil

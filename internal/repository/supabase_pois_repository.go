@@ -23,9 +23,14 @@ func NewSupabasePOIsRepository(client *database.SupabaseClient) POIsRepository {
 
 func (r *SupabasePOIsRepository) GetByID(ctx context.Context, id string) (*model.POI, error) {
 	var pois []model.POI
-	_, _, err := r.client.GetClient().From("pois").Select("*", "exact", false).Eq("id", id).Execute()
+	data, count, err := r.client.GetClient().From("pois").Select("*", "exact", false).Eq("id", id).Execute()
 	if err != nil {
 		return nil, fmt.Errorf("POIデータの取得失敗: %w", err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &pois); err != nil {
+		return nil, fmt.Errorf("POIデータのJSONアンマーシャル失敗: %w", err)
 	}
 
 	if len(pois) == 0 {
@@ -37,9 +42,14 @@ func (r *SupabasePOIsRepository) GetByID(ctx context.Context, id string) (*model
 
 func (r *SupabasePOIsRepository) GetByGridCellID(ctx context.Context, gridCellID int) ([]model.POI, error) {
 	var pois []model.POI
-	_, _, err := r.client.GetClient().From("pois").Select("*", "exact", false).Eq("grid_cell_id", strconv.Itoa(gridCellID)).Execute()
+	data, count, err := r.client.GetClient().From("pois").Select("*", "exact", false).Eq("grid_cell_id", strconv.Itoa(gridCellID)).Execute()
 	if err != nil {
 		return nil, fmt.Errorf("グリッドセル %d のPOIデータ取得失敗: %w", gridCellID, err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &pois); err != nil {
+		return nil, fmt.Errorf("POIデータのJSONアンマーシャル失敗: %w", err)
 	}
 
 	return pois, nil
@@ -49,9 +59,14 @@ func (r *SupabasePOIsRepository) GetNearbyPOIs(ctx context.Context, lat, lng flo
 	// PostGIS ST_DWithin関数を使用した地理的検索
 	// 簡易的な実装として、ここでは全POIを取得してフィルタリング
 	var pois []model.POI
-	_, _, err := r.client.GetClient().From("pois").Select("*", "exact", false).Execute()
+	data, count, err := r.client.GetClient().From("pois").Select("*", "exact", false).Execute()
 	if err != nil {
 		return nil, fmt.Errorf("周辺POIデータの取得失敗: %w", err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &pois); err != nil {
+		return nil, fmt.Errorf("POIデータのJSONアンマーシャル失敗: %w", err)
 	}
 
 	// TODO: 実際にはPostGISのST_DWithin関数を使用して効率的に検索
@@ -70,7 +85,7 @@ func (r *SupabasePOIsRepository) GetByCategories(ctx context.Context, categories
 	categoriesJSON := "[\"" + strings.Join(categories, "\",\"") + "\"]"
 
 	var pois []model.POI
-	_, _, err := r.client.GetClient().From("pois").
+	data, count, err := r.client.GetClient().From("pois").
 		Select("*", "exact", false).
 		Filter("categories", "cs", categoriesJSON).
 		Execute()
@@ -78,19 +93,29 @@ func (r *SupabasePOIsRepository) GetByCategories(ctx context.Context, categories
 	if err != nil {
 		return nil, fmt.Errorf("カテゴリ別POIデータの取得失敗: %w", err)
 	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &pois); err != nil {
+		return nil, fmt.Errorf("POIデータのJSONアンマーシャル失敗: %w", err)
+	}
 
 	return pois, nil
 }
 
 func (r *SupabasePOIsRepository) GetByRatingRange(ctx context.Context, minRating float64, lat, lng float64, radiusMeters int) ([]model.POI, error) {
 	var pois []model.POI
-	_, _, err := r.client.GetClient().From("pois").
+	data, count, err := r.client.GetClient().From("pois").
 		Select("*", "exact", false).
 		Gte("rate", fmt.Sprintf("%.2f", minRating)).
 		Execute()
 
 	if err != nil {
 		return nil, fmt.Errorf("評価値別POIデータの取得失敗: %w", err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &pois); err != nil {
+		return nil, fmt.Errorf("POIデータのJSONアンマーシャル失敗: %w", err)
 	}
 
 	return pois, nil

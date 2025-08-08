@@ -35,9 +35,14 @@ func (r *SupabaseWalksRepository) Create(ctx context.Context, walk *model.Walk) 
 
 func (r *SupabaseWalksRepository) GetByID(ctx context.Context, id string) (*model.Walk, error) {
 	var walks []model.Walk
-	_, _, err := r.client.GetClient().From("walks").Select("*", "exact", false).Eq("id", id).Execute()
+	data, count, err := r.client.GetClient().From("walks").Select("*", "exact", false).Eq("id", id).Execute()
 	if err != nil {
 		return nil, fmt.Errorf("散歩データの取得失敗: %w", err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &walks); err != nil {
+		return nil, fmt.Errorf("散歩データのJSONアンマーシャル失敗: %w", err)
 	}
 
 	if len(walks) == 0 {
@@ -51,12 +56,17 @@ func (r *SupabaseWalksRepository) GetWalksByBoundingBox(ctx context.Context, min
 	// PostGRESTのST_Within関数を使用して地理的範囲検索
 	// ここでは簡単な実装として緯度経度の範囲検索を行います
 	var walks []model.Walk
-	_, _, err := r.client.GetClient().From("walks").
+	data, count, err := r.client.GetClient().From("walks").
 		Select("id,title,area,description,duration_minutes,distance_meters,tags,route_polyline,created_at", "exact", false).
 		Execute()
 
 	if err != nil {
 		return nil, fmt.Errorf("境界ボックス内散歩データの取得失敗: %w", err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &walks); err != nil {
+		return nil, fmt.Errorf("散歩データのJSONアンマーシャル失敗: %w", err)
 	}
 
 	// Walk から WalkSummary に変換
@@ -115,9 +125,14 @@ func (r *SupabaseWalksRepository) Delete(ctx context.Context, id string) error {
 
 func (r *SupabaseWalksRepository) GetAll(ctx context.Context) ([]model.Walk, error) {
 	var walks []model.Walk
-	_, _, err := r.client.GetClient().From("walks").Select("*", "exact", false).Execute()
+	data, count, err := r.client.GetClient().From("walks").Select("*", "exact", false).Execute()
 	if err != nil {
 		return nil, fmt.Errorf("全散歩データの取得失敗: %w", err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &walks); err != nil {
+		return nil, fmt.Errorf("散歩データのJSONアンマーシャル失敗: %w", err)
 	}
 
 	return walks, nil
