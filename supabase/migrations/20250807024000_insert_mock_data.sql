@@ -47,7 +47,7 @@ INSERT INTO walks (
     duration_minutes, distance_meters, route_polyline, impressions
 ) VALUES
 (
-    'walk_umeda_01_shopping',
+    'a7b8c9d0-e1f2-3456-7890-abcdef123456',
     '梅田の三大商業施設を巡るショッピングクルーズ',
     '大阪・梅田エリア',
     'JR大阪駅直結のルクア、グランフロント、そして阪急うめだ本店を巡り、最新のファッション、コスメ、グルメを一日で満喫する散歩です。大阪の「今」を感じることができます。',
@@ -66,7 +66,7 @@ INSERT INTO walks (
     duration_minutes, distance_meters, route_polyline, impressions
 ) VALUES
 (
-    'walk_umeda_02_culture',
+    'b8c9d0e1-f2a3-4567-8901-bcdef2345678',
     '若者文化と恋の物語に触れる茶屋町散歩',
     '大阪・梅田エリア',
     '赤い観覧車が目印のHEP FIVEから始まり、おしゃれなショップが並ぶNU茶屋町を散策。最後は恋人の聖地としても知られるお初天神へ。梅田のポップカルチャーと歴史の両面を楽しめます。',
@@ -85,7 +85,7 @@ INSERT INTO walks (
     duration_minutes, distance_meters, route_polyline, impressions
 ) VALUES
 (
-    'walk_umeda_03_architecture',
+    'c9d0e1f2-a3b4-5678-9012-cdef34567890',
     '梅田の摩天楼と芸術を巡る建築散歩',
     '大阪・梅田エリア',
     '世界的に有名な梅田スカイビルからスタートし、そのユニークな建築美を堪能。その後、西梅田のラグジュアリーな空間ハービスENTを通り、JR大阪駅の巨大な屋根にも注目。近代建築の迫力を感じるルートです。',
