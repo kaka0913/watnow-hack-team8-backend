@@ -20,7 +20,10 @@ func NewSupabaseWalksRepository(client *database.SupabaseClient) WalksRepository
 }
 
 func (r *SupabaseWalksRepository) Create(ctx context.Context, walk *model.Walk) error {
-	data, err := json.Marshal(walk)
+	// Walk を DB 保存用の形式に変換（地理情報を含む）
+	walkDB := WalkToWalkDB(walk)
+
+	data, err := json.Marshal(walkDB)
 	if err != nil {
 		return fmt.Errorf("散歩データのJSONマーシャル失敗: %w", err)
 	}
@@ -53,15 +56,23 @@ func (r *SupabaseWalksRepository) GetByID(ctx context.Context, id string) (*mode
 }
 
 func (r *SupabaseWalksRepository) GetWalksByBoundingBox(ctx context.Context, minLng, minLat, maxLng, maxLat float64) ([]model.WalkSummary, error) {
-	// PostGRESTのST_Within関数を使用して地理的範囲検索
-	// ここでは簡単な実装として緯度経度の範囲検索を行います
+	// 境界ボックスのPolygonを作成（WKT形式）
+	bbox := fmt.Sprintf("POLYGON((%f %f,%f %f,%f %f,%f %f,%f %f))",
+		minLng, minLat, // 左下
+		maxLng, minLat, // 右下
+		maxLng, maxLat, // 右上
+		minLng, maxLat, // 左上
+		minLng, minLat) // 閉じる
+
+	// PostGIS ST_Intersects関数を使用して境界ボックス内のwalksを検索
 	var walks []model.Walk
 	data, count, err := r.client.GetClient().From("walks").
-		Select("id,title,area,description,duration_minutes,distance_meters,tags,route_polyline,created_at", "exact", false).
+		Select("id,title,area,description,duration_minutes,distance_meters,tags,route_polyline,created_at,start_location,end_location", "exact", false).
+		Filter("route_bounds", "st_intersects", fmt.Sprintf("ST_GeomFromText('%s', 4326)", bbox)).
 		Execute()
 
 	if err != nil {
-		return nil, fmt.Errorf("境界ボックス内散歩データの取得失敗: %w", err)
+		return nil, fmt.Errorf("境界ボックス検索エラー: %w", err)
 	}
 	_ = count
 
@@ -81,6 +92,8 @@ func (r *SupabaseWalksRepository) GetWalksByBoundingBox(ctx context.Context, min
 			DurationMinutes: walk.DurationMinutes,
 			DistanceMeters:  walk.DistanceMeters,
 			Tags:            walk.Tags,
+			StartLocation:   walk.StartLocation,
+			EndLocation:     walk.EndLocation,
 			RoutePolyline:   walk.RoutePolyline,
 		}
 		summaries = append(summaries, summary)

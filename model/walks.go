@@ -42,9 +42,7 @@ type CreateWalkRequest struct {
 }
 
 type CreateWalkResponse struct {
-	Status  string `json:"status"`
-	Message string `json:"message"`
-	WalkID  string `json:"walk_id"`
+	Status string `json:"status"`
 }
 
 type VisitedPOI struct {
