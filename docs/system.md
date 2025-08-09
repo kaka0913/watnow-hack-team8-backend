@@ -56,7 +56,7 @@ graph TD
 
 ---
 
-### 3. Eventarc + Cloud Run (非同期の物語生成)
+### 3. Cloud Tasks + Cloud Run (非同期の物語生成)
 
 - 役割:
     
