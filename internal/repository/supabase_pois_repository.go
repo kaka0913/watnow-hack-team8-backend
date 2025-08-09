@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"Team8-App/internal/database"
 	"Team8-App/model"
@@ -81,13 +80,15 @@ func (r *SupabasePOIsRepository) GetNearbyPOIs(ctx context.Context, lat, lng flo
 }
 
 func (r *SupabasePOIsRepository) GetByCategories(ctx context.Context, categories []string, lat, lng float64, radiusMeters int) ([]model.POI, error) {
-	// JSONB配列に対するクエリ
-	categoriesJSON := "[\"" + strings.Join(categories, "\",\"") + "\"]"
+	categoriesJSON, err := json.Marshal(categories)
+	if err != nil {
+		return nil, fmt.Errorf("categoriesのJSON変換失敗: %w", err)
+	}
 
 	var pois []model.POI
 	data, count, err := r.client.GetClient().From("pois").
 		Select("*", "exact", false).
-		Filter("categories", "cs", categoriesJSON).
+		Filter("categories", "cs", string(categoriesJSON)).
 		Execute()
 
 	if err != nil {
