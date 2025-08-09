@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/paulmach/orb"
+	"github.com/paulmach/orb/encoding/wkt"
+
 	"Team8-App/internal/database"
 	"Team8-App/model"
 )
@@ -56,19 +59,23 @@ func (r *SupabaseWalksRepository) GetByID(ctx context.Context, id string) (*mode
 }
 
 func (r *SupabaseWalksRepository) GetWalksByBoundingBox(ctx context.Context, minLng, minLat, maxLng, maxLat float64) ([]model.WalkSummary, error) {
-	// 境界ボックスのPolygonを作成（WKT形式）
-	bbox := fmt.Sprintf("POLYGON((%f %f,%f %f,%f %f,%f %f,%f %f))",
-		minLng, minLat, // 左下
-		maxLng, minLat, // 右下
-		maxLng, maxLat, // 右上
-		minLng, maxLat, // 左上
-		minLng, minLat) // 閉じる
+	// orb.Bound を使用して境界ボックスを作成
+	bound := orb.Bound{
+		Min: orb.Point{minLng, minLat},
+		Max: orb.Point{maxLng, maxLat},
+	}
+
+	// orb.Polygon として境界ボックスを作成
+	polygon := bound.ToPolygon()
+
+	// WKT文字列として出力（orb使用）
+	wktString := wkt.MarshalString(polygon)
 
 	// PostGIS ST_Intersects関数を使用して境界ボックス内のwalksを検索
 	var walks []model.Walk
 	data, count, err := r.client.GetClient().From("walks").
 		Select("id,title,area,description,duration_minutes,distance_meters,tags,route_polyline,created_at,start_location,end_location", "exact", false).
-		Filter("route_bounds", "st_intersects", fmt.Sprintf("ST_GeomFromText('%s', 4326)", bbox)).
+		Filter("route_bounds", "st_intersects", fmt.Sprintf("ST_GeomFromText('%s', 4326)", wktString)).
 		Execute()
 
 	if err != nil {
