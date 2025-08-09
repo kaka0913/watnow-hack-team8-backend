@@ -3,12 +3,15 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 
+	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
 	"Team8-App/internal/database"
+	"Team8-App/internal/handler"
+	"Team8-App/internal/repository"
+	"Team8-App/internal/service"
 )
 
 func main() {
@@ -38,25 +41,29 @@ func main() {
 	}
 	fmt.Println("✅ Supabase connection successful!")
 
-	// HTTPハンドラーの設定
-	http.HandleFunc("/", homeHandler)
-	http.HandleFunc("/api/health", healthHandler)
-	http.HandleFunc("/api/team", teamHandler)
+	fmt.Println("Setting up dependency injection...")
+	walksRepo := repository.NewSupabaseWalksRepository(supabaseClient)
+	walksService := service.NewWalksService(walksRepo)
+	walksHandler := handler.NewWalksHandler(walksService)
 
-	fmt.Println("Team8-App server starting on :8080...")
-	log.Fatal(http.ListenAndServe(":8080", nil))
-}
+	// Ginルーターのセットアップ
+	r := gin.Default()
+	// ヘルスチェックエンドポイント
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"status":  "ok",
+			"service": "Team8-App",
+		})
+	})
 
-func homeHandler(w http.ResponseWriter, r *http.Request) {
-	fmt.Fprintf(w, "Welcome to Team8-App!")
-}
+	// Walks API エンドポイント
+	walks := r.Group("/walks")
+	{
+		walks.POST("", walksHandler.CreateWalk)           // POST /walks
+		walks.GET("", walksHandler.GetWalksByBoundingBox) // GET /walks?bbox=...
+		walks.GET("/:id", walksHandler.GetWalkDetail)     // GET /walks/:id
+	}
 
-func healthHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"status": "healthy", "service": "Team8-App"}`)
-}
-
-func teamHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-	fmt.Fprintf(w, `{"team": "Team8", "members": ["Member1", "Member2", "Member3"]}`)
+	fmt.Println("🚀 Team8-App server starting on :8080...")
+	log.Fatal(r.Run(":8080"))
 }
