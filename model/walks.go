@@ -4,19 +4,28 @@ import (
 	"time"
 )
 
+// GeoPolygon PostGIS POLYGON 型の JSON 表現
+type GeoPolygon struct {
+	Type        string        `json:"type"`
+	Coordinates [][][]float64 `json:"coordinates"`
+}
+
 type Walk struct {
-	ID              string    `json:"id" db:"id"`                             // ユニークな散歩ID
-	Title           string    `json:"title" db:"title"`                       // 物語のタイトル
-	Area            string    `json:"area" db:"area"`                         // エリア名
-	Description     string    `json:"description" db:"description"`           // 物語の本文
-	Theme           string    `json:"theme" db:"theme"`                       // テーマ
-	POIIds          []string  `json:"poi_ids" db:"poi_ids"`                   // 訪問したPOIのID配列
-	Tags            []string  `json:"tags" db:"tags"`                         // タグ
-	DurationMinutes int       `json:"duration_minutes" db:"duration_minutes"` // 実績時間
-	DistanceMeters  int       `json:"distance_meters" db:"distance_meters"`   // 実績距離
-	RoutePolyline   string    `json:"route_polyline" db:"route_polyline"`     // ルートの軌跡
-	Impressions     string    `json:"impressions" db:"impressions"`           // 感想
-	CreatedAt       time.Time `json:"created_at" db:"created_at"`             // 投稿日時
+	ID              string      `json:"id" db:"id"`                               // ユニークな散歩ID
+	Title           string      `json:"title" db:"title"`                         // 物語のタイトル
+	Area            string      `json:"area" db:"area"`                           // エリア名
+	Description     string      `json:"description" db:"description"`             // 物語の本文
+	Theme           string      `json:"theme" db:"theme"`                         // テーマ
+	POIIds          []string    `json:"poi_ids" db:"poi_ids"`                     // 訪問したPOIのID配列
+	Tags            []string    `json:"tags" db:"tags"`                           // タグ
+	DurationMinutes int         `json:"duration_minutes" db:"duration_minutes"`   // 実績時間
+	DistanceMeters  int         `json:"distance_meters" db:"distance_meters"`     // 実績距離
+	RoutePolyline   string      `json:"route_polyline" db:"route_polyline"`       // ルートの軌跡
+	Impressions     string      `json:"impressions" db:"impressions"`             // 感想
+	StartLocation   *Location   `json:"start_location" db:"start_location"`       // 散歩の開始位置
+	EndLocation     *Location   `json:"end_location" db:"end_location"`           // 散歩の終了位置
+	RouteBounds     *GeoPolygon `json:"route_bounds,omitempty" db:"route_bounds"` // ルート境界ボックス（検索最適化用）
+	CreatedAt       time.Time   `json:"created_at" db:"created_at"`               // 投稿日時
 }
 
 type CreateWalkRequest struct {
@@ -54,6 +63,7 @@ type WalkSummary struct {
 	DurationMinutes int       `json:"duration_minutes"`
 	DistanceMeters  int       `json:"distance_meters"`
 	Tags            []string  `json:"tags"`
+	StartLocation   *Location `json:"start_location"`
 	EndLocation     *Location `json:"end_location"`
 	RoutePolyline   string    `json:"route_polyline"`
 }
