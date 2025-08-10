@@ -59,6 +59,16 @@ func (r *SupabaseWalksRepository) GetByID(ctx context.Context, id string) (*mode
 }
 
 func (r *SupabaseWalksRepository) GetWalksByBoundingBox(ctx context.Context, minLng, minLat, maxLng, maxLat float64) ([]model.WalkSummary, error) {
+	// 入力値の検証
+	if minLng >= maxLng || minLat >= maxLat {
+		return nil, fmt.Errorf("無効な境界ボックス: min値がmax値以上です")
+	}
+	
+	// 座標値の範囲チェック（経度: -180〜180, 緯度: -90〜90）
+	if minLng < -180 || maxLng > 180 || minLat < -90 || maxLat > 90 {
+		return nil, fmt.Errorf("座標値が有効範囲外です")
+	}
+
 	// orb.Bound を使用して境界ボックスを作成
 	bound := orb.Bound{
 		Min: orb.Point{minLng, minLat},
@@ -132,15 +142,6 @@ func (r *SupabaseWalksRepository) GetWalkDetail(ctx context.Context, id string) 
 	}
 
 	return detail, nil
-}
-
-func (r *SupabaseWalksRepository) Delete(ctx context.Context, id string) error {
-	_, _, err := r.client.GetClient().From("walks").Delete("", "").Eq("id", id).Execute()
-	if err != nil {
-		return fmt.Errorf("散歩データの削除失敗: %w", err)
-	}
-
-	return nil
 }
 
 func (r *SupabaseWalksRepository) GetAll(ctx context.Context) ([]model.Walk, error) {
