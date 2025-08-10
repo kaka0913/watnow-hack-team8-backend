@@ -1,5 +1,6 @@
 import os
 import time
+import math
 import requests
 import pygeohash as pgh
 from dotenv import load_dotenv
@@ -20,8 +21,14 @@ MIN_RATING = 3.5
 # 散歩が楽しくなるスポットのカテゴリ
 POI_TYPES = [
     'cafe', 'park', 'tourist_attraction', 'art_gallery', 'book_store',
-    'bakery', 'store', 'shopping_mall', 'home_goods_store', 'museum',
-    'shrine', 'temple'
+    'bakery', 'store', 'home_goods_store', 'museum',
+    'shrine', 'temple', 'florist', 'library', 'riverside_park'
+]
+
+# 河川敷判定用キーワード
+RIVERSIDE_KEYWORDS = [
+    '河川敷', '川原', '河原', '河川', '堤防', '川辺', '水辺', 
+    'リバーサイド', 'riverside', '川沿い', '河岸'
 ]
 
 # --- エリア定義 (4人分担用) ---
@@ -80,6 +87,15 @@ def get_geohashes_in_all_boxes(bounding_boxes, precision):
                 lon += lon_step
             lat += lat_step
     return list(all_geohashes)
+
+def is_riverside_park(place_name, place_types):
+    """公園が河川敷かどうかを判定する"""
+    # 名前に河川敷関連キーワードが含まれているかチェック
+    name_lower = place_name.lower()
+    for keyword in RIVERSIDE_KEYWORDS:
+        if keyword.lower() in name_lower:
+            return True
+    return False
 
 def ensure_grid_cells_exist(supabase: Client, geohashes):
     """DBにgrid_cellが存在することを確認し、なければ作成する。geohash->idの辞書を返す。"""
@@ -148,23 +164,71 @@ def populate_pois(supabase: Client, geohash_chunk, geohash_to_id_map):
 
         found_place_ids = set()
         pois_to_insert = []
+        park_places = []  # parkの結果を保存
         
         for poi_type in POI_TYPES:
+            # riverside_parkはスキップ（parkの結果を後で処理）
+            if poi_type == 'riverside_park':
+                continue
+                
             places = fetch_places(lat, lon, radius, poi_type)
+            
+            # parkの場合は結果を保存
+            if poi_type == 'park':
+                park_places = places
+            
             for place in places:
                 place_id = place.get('place_id')
                 rating = place.get('rating', 0)
 
-                if place_id and place_id not in found_place_ids and rating >= MIN_RATING:
+                # parkの場合は3.0以上、その他は3.5以上
+                min_rating = 3.0 if poi_type == 'park' else MIN_RATING
+                
+                if place_id and place_id not in found_place_ids and rating >= min_rating:
+                    place_name = place['name']
+                    place_types = place.get('types', [])
+                    
+                    # parkタイプで河川敷の場合はスキップ（後でriverside_parkとして処理）
+                    if poi_type == 'park' and is_riverside_park(place_name, place_types):
+                        continue
+                    
                     found_place_ids.add(place_id)
                     loc = place['geometry']['location']
                     point = Point(loc['lng'], loc['lat'])
                     
                     pois_to_insert.append({
                         'id': place_id,
-                        'name': place['name'],
+                        'name': place_name,
                         'location': f"SRID=4326;{point.wkt}",
-                        'categories': place.get('types', []),
+                        'categories': place_types,
+                        'rate': rating,
+                        'grid_cell_id': geohash_to_id_map.get(geohash)
+                    })
+        
+        # parkの結果から河川敷を抽出してriverside_parkとして処理
+        for place in park_places:
+            place_id = place.get('place_id')
+            rating = place.get('rating', 0)
+
+            # 河川敷も公園なので3.0以上で判定
+            if place_id and place_id not in found_place_ids and rating >= 3.0:
+                place_name = place['name']
+                place_types = place.get('types', [])
+                
+                # 河川敷かどうかチェック
+                if is_riverside_park(place_name, place_types):
+                    found_place_ids.add(place_id)
+                    loc = place['geometry']['location']
+                    point = Point(loc['lng'], loc['lat'])
+                    
+                    # カテゴリにriverside_parkを追加
+                    place_types_with_riverside = place_types + ['riverside_park']
+                    
+                    pois_to_insert.append({
+                        'id': place_id,
+                        'name': place_name,
+                        'location': f"SRID=4326;{point.wkt}",
+                        'categories': place_types_with_riverside,
                         'rate': rating,
                         'grid_cell_id': geohash_to_id_map.get(geohash)
                     })
