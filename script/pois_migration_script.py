@@ -1,11 +1,10 @@
 import os
 import time
 import requests
-import argparse
 import pygeohash as pgh
 from dotenv import load_dotenv
 from supabase import create_client, Client
-from shapely.geometry import Point
+from shapely.geometry import box, Point
 
 # .envファイルから環境変数を読み込む
 load_dotenv()
@@ -82,6 +81,31 @@ def get_geohashes_in_all_boxes(bounding_boxes, precision):
             lat += lat_step
     return list(all_geohashes)
 
+def ensure_grid_cells_exist(supabase: Client, geohashes):
+    """DBにgrid_cellが存在することを確認し、なければ作成する。geohash->idの辞書を返す。"""
+    print("グリッドセルの準備を開始します...")
+    cells_to_insert = []
+    for geohash in geohashes:
+        bbox = pgh.decode_bbox(geohash)
+        cell_polygon = box(bbox.west, bbox.south, bbox.east, bbox.north)
+        cells_to_insert.append({
+            'geohash': geohash,
+            'geometry': f"SRID=4326;{cell_polygon.wkt}"
+        })
+    
+    try:
+        # geohashが重複した場合は無視する (upsert)
+        supabase.table('grid_cells').upsert(cells_to_insert, on_conflict='geohash').execute()
+        print("グリッドセルの準備が完了しました。")
+    except Exception as e:
+        print(f"グリッドセル準備エラー: {e}")
+        return None
+
+    # 作成/確認したセルの情報をDBから取得して辞書を作成
+    response = supabase.table('grid_cells').select('id, geohash').in_('geohash', geohashes).execute()
+    geohash_to_id_map = {cell['geohash']: cell['id'] for cell in response.data}
+    return geohash_to_id_map
+
 def fetch_places(lat, lon, radius, poi_type):
     """Google Places APIからスポット情報を取得する"""
     all_places = []
@@ -112,7 +136,7 @@ def fetch_places(lat, lon, radius, poi_type):
             
     return all_places
 
-def populate_pois(supabase: Client, geohash_chunk):
+def populate_pois(supabase: Client, geohash_chunk, geohash_to_id_map):
     """各Geohashに対応するPOIをDBに保存する"""
     print(f"{len(geohash_chunk)}個のGeohashの処理を開始します...")
     
@@ -141,7 +165,8 @@ def populate_pois(supabase: Client, geohash_chunk):
                         'name': place['name'],
                         'location': f"SRID=4326;{point.wkt}",
                         'categories': place.get('types', []),
-                        'rate': rating
+                        'rate': rating,
+                        'grid_cell_id': geohash_to_id_map.get(geohash)
                     })
 
         if pois_to_insert:
@@ -170,7 +195,13 @@ def main():
     all_geohashes = get_geohashes_in_all_boxes(TARGET_BOUNDING_BOXES, GEOHASH_PRECISION)
     print(f"合計 {len(all_geohashes)}個のGeohashが見つかりました。")
     
-    populate_pois(supabase, all_geohashes)
+    # グリッドセルを準備し、geohash->idの対応辞書を取得
+    geohash_to_id_map = ensure_grid_cells_exist(supabase, all_geohashes)
+    if not geohash_to_id_map:
+        print("グリッドセルの準備に失敗したため、処理を中断します。")
+        return
+
+    populate_pois(supabase, all_geohashes, geohash_to_id_map)
 
     print(f"担当エリアの処理が完了しました。")
 
