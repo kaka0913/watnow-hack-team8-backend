@@ -24,8 +24,8 @@ func NewSupabaseClient() (*SupabaseClient, error) {
 		return nil, fmt.Errorf("SUPABASE_ANON_KEY環境変数が設定されていません")
 	}
 
-	// クライアントオプションの設定
-	client, err := supabase.NewClient(supabaseURL, supabaseAnonKey, &supabase.ClientOptions{})
+	// Supabaseクライアントの初期化
+	client, err := supabase.NewClient(supabaseURL, supabaseAnonKey, nil)
 	if err != nil {
 		return nil, fmt.Errorf("Supabaseクライアントの初期化に失敗: %w", err)
 	}

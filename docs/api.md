@@ -246,8 +246,6 @@ erDiagram
 ```json
 {
   "status": "success",
-  "message": "Your walk has been posted to the Honeycomb Map!",
-  "walk_id": "walk_uuid_xyz789"
 }
 ```
 
