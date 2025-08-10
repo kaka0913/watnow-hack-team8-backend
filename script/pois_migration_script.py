@@ -42,13 +42,13 @@ BOUNDING_BOXES_KIM = [
     {'name': 'B: Shiga_Otsu', 'min_lat': 35.000, 'max_lat': 35.025, 'min_lon': 135.850, 'max_lon': 135.880},
 ]
 
-# 【Cさんの担当エリア】大阪キタ＋ミナミ (約350 Geohash)
+# 【KOSUKEさんの担当エリア】大阪キタ＋ミナミ (約350 Geohash)
 BOUNDING_BOXES_KOSUKE = [
     {'name': 'C: Osaka_Kita_Umeda', 'min_lat': 34.695, 'max_lat': 34.710, 'min_lon': 135.490, 'max_lon': 135.510},
     {'name': 'C: Osaka_Minami_Namba', 'min_lat': 34.660, 'max_lat': 34.675, 'min_lon': 135.495, 'max_lon': 135.515},
 ]
 
-# 【Dさんの担当エリア】大阪その他＋滋賀東部 (約250 Geohash)
+# 【RIHOさんの担当エリア】大阪その他＋滋賀東部 (約250 Geohash)
 BOUNDING_BOXES_RIHO = [
     {'name': 'D: Osaka_Tennoji_Shinsekai', 'min_lat': 34.645, 'max_lat': 34.658, 'min_lon': 135.505, 'max_lon': 135.520},
     {'name': 'D: Osaka_Castle', 'min_lat': 34.682, 'max_lat': 34.692, 'min_lon': 135.520, 'max_lon': 135.535},
