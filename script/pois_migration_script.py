@@ -12,7 +12,7 @@ load_dotenv()
 # --- 設定項目 ---
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_ANON_KEY")
-GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
 
 GEOHASH_PRECISION = 6 # グリッドの精度
 MIN_RATING = 3.5
@@ -114,7 +114,7 @@ def fetch_places(lat, lon, radius, poi_type):
         'location': f"{lat},{lon}",
         'radius': radius,
         'type': poi_type,
-        'key': GOOGLE_API_KEY,
+        'key': GOOGLE_MAPS_API_KEY,
         'language': 'ja'
     }
     
@@ -185,7 +185,7 @@ def main():
         print("実行したいエリアの行のコメントアウトを解除してください。 (例: TARGET_BOUNDING_BOXES = BOUNDING_BOXES_A)")
         return
 
-    if not all([SUPABASE_URL, SUPABASE_KEY, GOOGLE_API_KEY]):
+    if not all([SUPABASE_URL, SUPABASE_KEY, GOOGLE_MAPS_API_KEY]):
         print("エラー: .envファイルを正しく設定してください。")
         return
 
