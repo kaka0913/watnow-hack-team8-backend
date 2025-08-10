@@ -1,6 +1,7 @@
 import os
 import time
 import math
+import json
 import requests
 import pygeohash as pgh
 from dotenv import load_dotenv
@@ -17,6 +18,9 @@ GOOGLE_MAPS_API_KEY = os.environ.get("GOOGLE_MAPS_API_KEY")
 
 GEOHASH_PRECISION = 6 # グリッドの精度
 MIN_RATING = 3.5
+MAX_RETRIES = 3  # API失敗時の最大リトライ回数
+CHUNK_SIZE = 10  # 一度に処理するGeohashの数
+PROGRESS_FILE = 'pois_migration_progress.json'  # 進捗保存ファイル
 
 # 散歩が楽しくなるスポットのカテゴリ
 POI_TYPES = [
@@ -63,13 +67,50 @@ BOUNDING_BOXES_RIHO = [
 
 
 # ★★★ 自分の担当に合わせて、以下の1行のコメントを外してください ★★★
-# TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU
+TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU
 # TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KIM
 # TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KOSUKE
 # TARGET_BOUNDING_BOXES = BOUNDING_BOXES_RIHO
 
 
 # --- スクリプト本体 ---
+
+def save_progress(processed_geohashes, total_geohashes):
+    """進捗をファイルに保存"""
+    progress_data = {
+        'processed_geohashes': list(processed_geohashes),
+        'total_count': len(total_geohashes),
+        'processed_count': len(processed_geohashes),
+        'timestamp': time.time()
+    }
+    try:
+        with open(PROGRESS_FILE, 'w', encoding='utf-8') as f:
+            json.dump(progress_data, f, ensure_ascii=False, indent=2)
+        print(f"進捗を保存しました ({len(processed_geohashes)}/{len(total_geohashes)})")
+    except Exception as e:
+        print(f"進捗保存エラー: {e}")
+
+def load_progress():
+    """進捗ファイルから処理済みGeohashを読み込み"""
+    try:
+        if os.path.exists(PROGRESS_FILE):
+            with open(PROGRESS_FILE, 'r', encoding='utf-8') as f:
+                progress_data = json.load(f)
+            processed = set(progress_data.get('processed_geohashes', []))
+            print(f"前回の進捗を読み込みました: {len(processed)}件処理済み")
+            return processed
+    except Exception as e:
+        print(f"進捗読み込みエラー: {e}")
+    return set()
+
+def clear_progress():
+    """進捗ファイルを削除"""
+    try:
+        if os.path.exists(PROGRESS_FILE):
+            os.remove(PROGRESS_FILE)
+            print("進捗ファイルをクリアしました")
+    except Exception as e:
+        print(f"進捗ファイル削除エラー: {e}")
 
 def get_geohashes_in_all_boxes(bounding_boxes, precision):
     """指定した複数の矩形範囲内のGeohashをすべてリストアップする"""
@@ -134,112 +175,146 @@ def fetch_places(lat, lon, radius, poi_type):
         'language': 'ja'
     }
     
-    while True:
+    retry_count = 0
+    while retry_count <= MAX_RETRIES:
         try:
             response = requests.get(url, params=params)
             response.raise_for_status()
             results = response.json()
+            
+            # APIエラーレスポンスの確認
+            if results.get('status') == 'OVER_QUERY_LIMIT':
+                print(f"    -> API制限に達しました。60秒待機します...")
+                time.sleep(60)
+                retry_count += 1
+                continue
+            elif results.get('status') not in ['OK', 'ZERO_RESULTS']:
+                print(f"    -> API警告: {results.get('status')}")
+            
             all_places.extend(results.get('results', []))
             
             if 'next_page_token' in results and results['next_page_token']:
                 params['pagetoken'] = results['next_page_token']
                 time.sleep(2) # Googleの推奨に従い、次のページ取得前に待機
+                params.pop('pagetoken', None)  # 次のループのためにクリア
             else:
                 break
+                
         except requests.exceptions.RequestException as e:
-            print(f"  - APIリクエストエラー: {e}")
-            break
+            retry_count += 1
+            if retry_count <= MAX_RETRIES:
+                wait_time = 2 ** retry_count  # 指数バックオフ
+                print(f"    -> APIエラー (試行{retry_count}/{MAX_RETRIES}): {e}")
+                print(f"    -> {wait_time}秒後にリトライします...")
+                time.sleep(wait_time)
+            else:
+                print(f"    -> 最大リトライ回数に達しました: {e}")
+                break
             
     return all_places
 
-def populate_pois(supabase: Client, geohash_chunk, geohash_to_id_map):
-    """各Geohashに対応するPOIをDBに保存する"""
+def populate_pois_chunk(supabase: Client, geohash_chunk, geohash_to_id_map, processed_geohashes, all_geohashes):
+    """Geohashチャンクに対応するPOIをDBに保存する"""
     print(f"{len(geohash_chunk)}個のGeohashの処理を開始します...")
     
     for i, geohash in enumerate(geohash_chunk):
-        print(f"  - Geohash {i+1}/{len(geohash_chunk)}: {geohash} を処理中...")
-        lat, lon = pgh.decode(geohash)
-        (lat_err, lon_err) = pgh.decode_exactly(geohash)[2:4]
-        radius = ((lat_err * 111000)**2 + (lon_err * 111000)**2)**0.5
+        try:
+            print(f"  - Geohash {i+1}/{len(geohash_chunk)}: {geohash} を処理中...")
+            lat, lon = pgh.decode(geohash)
+            (lat_err, lon_err) = pgh.decode_exactly(geohash)[2:4]
+            radius = ((lat_err * 111000)**2 + (lon_err * 111000)**2)**0.5
 
-        found_place_ids = set()
-        pois_to_insert = []
-        park_places = []  # parkの結果を保存
-        
-        for poi_type in POI_TYPES:
-            # riverside_parkはスキップ（parkの結果を後で処理）
-            if poi_type == 'riverside_park':
-                continue
+            found_place_ids = set()
+            pois_to_insert = []
+            park_places = []  # parkの結果を保存
+            
+            for poi_type in POI_TYPES:
+                # riverside_parkはスキップ（parkの結果を後で処理）
+                if poi_type == 'riverside_park':
+                    continue
+                    
+                places = fetch_places(lat, lon, radius, poi_type)
                 
-            places = fetch_places(lat, lon, radius, poi_type)
+                # parkの場合は結果を保存
+                if poi_type == 'park':
+                    park_places = places
+                
+                for place in places:
+                    place_id = place.get('place_id')
+                    rating = place.get('rating', 0)
+
+                    # parkの場合は3.0以上、その他は3.5以上
+                    min_rating = 3.0 if poi_type == 'park' else MIN_RATING
+                    
+                    if place_id and place_id not in found_place_ids and rating >= min_rating:
+                        place_name = place['name']
+                        place_types = place.get('types', [])
+                        
+                        # parkタイプで河川敷の場合はスキップ（後でriverside_parkとして処理）
+                        if poi_type == 'park' and is_riverside_park(place_name, place_types):
+                            continue
+                        
+                        found_place_ids.add(place_id)
+                        loc = place['geometry']['location']
+                        point = Point(loc['lng'], loc['lat'])
+                        
+                        pois_to_insert.append({
+                            'id': place_id,
+                            'name': place_name,
+                            'location': f"SRID=4326;{point.wkt}",
+                            'categories': place_types,
+                            'rate': rating,
+                            'grid_cell_id': geohash_to_id_map.get(geohash)
+                        })
             
-            # parkの場合は結果を保存
-            if poi_type == 'park':
-                park_places = places
-            
-            for place in places:
+            # parkの結果から河川敷を抽出してriverside_parkとして処理
+            for place in park_places:
                 place_id = place.get('place_id')
                 rating = place.get('rating', 0)
 
-                # parkの場合は3.0以上、その他は3.5以上
-                min_rating = 3.0 if poi_type == 'park' else MIN_RATING
-                
-                if place_id and place_id not in found_place_ids and rating >= min_rating:
+                # 河川敷も公園なので3.0以上で判定
+                if place_id and place_id not in found_place_ids and rating >= 3.0:
                     place_name = place['name']
                     place_types = place.get('types', [])
                     
-                    # parkタイプで河川敷の場合はスキップ（後でriverside_parkとして処理）
-                    if poi_type == 'park' and is_riverside_park(place_name, place_types):
-                        continue
-                    
-                    found_place_ids.add(place_id)
-                    loc = place['geometry']['location']
-                    point = Point(loc['lng'], loc['lat'])
-                    
-                    pois_to_insert.append({
-                        'id': place_id,
-                        'name': place_name,
-                        'location': f"SRID=4326;{point.wkt}",
-                        'categories': place_types,
-                        'rate': rating,
-                        'grid_cell_id': geohash_to_id_map.get(geohash)
-                    })
-        
-        # parkの結果から河川敷を抽出してriverside_parkとして処理
-        for place in park_places:
-            place_id = place.get('place_id')
-            rating = place.get('rating', 0)
+                    # 河川敷かどうかチェック
+                    if is_riverside_park(place_name, place_types):
+                        found_place_ids.add(place_id)
+                        loc = place['geometry']['location']
+                        point = Point(loc['lng'], loc['lat'])
+                        
+                        # カテゴリにriverside_parkを追加
+                        place_types_with_riverside = place_types + ['riverside_park']
+                        
+                        pois_to_insert.append({
+                            'id': place_id,
+                            'name': place_name,
+                            'location': f"SRID=4326;{point.wkt}",
+                            'categories': place_types_with_riverside,
+                            'rate': rating,
+                            'grid_cell_id': geohash_to_id_map.get(geohash)
+                        })
 
-            # 河川敷も公園なので3.0以上で判定
-            if place_id and place_id not in found_place_ids and rating >= 3.0:
-                place_name = place['name']
-                place_types = place.get('types', [])
-                
-                # 河川敷かどうかチェック
-                if is_riverside_park(place_name, place_types):
-                    found_place_ids.add(place_id)
-                    loc = place['geometry']['location']
-                    point = Point(loc['lng'], loc['lat'])
-                    
-                    # カテゴリにriverside_parkを追加
-                    place_types_with_riverside = place_types + ['riverside_park']
-                    
-                    pois_to_insert.append({
-                        'id': place_id,
-                        'name': place_name,
-                        'location': f"SRID=4326;{point.wkt}",
-                        'categories': place_types_with_riverside,
-                        'rate': rating,
-                        'grid_cell_id': geohash_to_id_map.get(geohash)
-                    })
-
-        if pois_to_insert:
-            try:
-                supabase.table('pois').upsert(pois_to_insert, on_conflict='id').execute()
-                print(f"    -> {len(pois_to_insert)}件のPOIをDBに保存しました。")
-            except Exception as e:
-                print(f"    -> POI挿入エラー: {e}")
-        time.sleep(1) # APIの過剰な連続リクエストを防ぐためのウェイト
+            if pois_to_insert:
+                try:
+                    supabase.table('pois').upsert(pois_to_insert, on_conflict='id').execute()
+                    print(f"    -> {len(pois_to_insert)}件のPOIをDBに保存しました。")
+                except Exception as e:
+                    print(f"    -> POI挿入エラー: {e}")
+                    continue  # このGeohashは失敗として扱うが、次に進む
+            
+            # 成功したGeohashを記録
+            processed_geohashes.add(geohash)
+            
+            # 5個処理するごとに進捗保存
+            if len(processed_geohashes) % 5 == 0:
+                save_progress(processed_geohashes, all_geohashes)
+            
+            time.sleep(1) # APIの過剰な連続リクエストを防ぐためのウェイト
+            
+        except Exception as e:
+            print(f"    -> Geohash {geohash} の処理でエラー: {e}")
+            continue  # エラーが起きても次のGeohashに進む
 
 def main():
     """メイン処理"""
@@ -255,9 +330,25 @@ def main():
 
     supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
     
+    # 進捗確認
+    processed_geohashes = load_progress()
+    restart = input("\n前回の続きから実行しますか？ (y/n): ").lower().strip()
+    if restart != 'y':
+        processed_geohashes.clear()
+        clear_progress()
+        print("最初から実行します。")
+    
     print("全対象エリアのGeohashを計算中...")
     all_geohashes = get_geohashes_in_all_boxes(TARGET_BOUNDING_BOXES, GEOHASH_PRECISION)
     print(f"合計 {len(all_geohashes)}個のGeohashが見つかりました。")
+    
+    # 未処理のGeohashを抽出
+    remaining_geohashes = [gh for gh in all_geohashes if gh not in processed_geohashes]
+    print(f"未処理: {len(remaining_geohashes)}個のGeohash")
+    
+    if not remaining_geohashes:
+        print("すべてのGeohashが処理済みです。")
+        return
     
     # グリッドセルを準備し、geohash->idの対応辞書を取得
     geohash_to_id_map = ensure_grid_cells_exist(supabase, all_geohashes)
@@ -265,9 +356,36 @@ def main():
         print("グリッドセルの準備に失敗したため、処理を中断します。")
         return
 
-    populate_pois(supabase, all_geohashes, geohash_to_id_map)
-
-    print(f"担当エリアの処理が完了しました。")
+    # チャンク単位で処理
+    try:
+        for i in range(0, len(remaining_geohashes), CHUNK_SIZE):
+            chunk = remaining_geohashes[i:i + CHUNK_SIZE]
+            chunk_num = i // CHUNK_SIZE + 1
+            total_chunks = (len(remaining_geohashes) + CHUNK_SIZE - 1) // CHUNK_SIZE
+            
+            print(f"\n📦 チャンク {chunk_num}/{total_chunks} を処理中...")
+            populate_pois_chunk(supabase, chunk, geohash_to_id_map, processed_geohashes, all_geohashes)
+            
+            print(f"チャンク {chunk_num} 完了。進捗: {len(processed_geohashes)}/{len(all_geohashes)}")
+            
+        # 最終進捗保存
+        save_progress(processed_geohashes, all_geohashes)
+        print(f"\n🎉 全処理が完了しました！")
+        print(f"処理済み: {len(processed_geohashes)}/{len(all_geohashes)}")
+        
+        # 完了後に進捗ファイルを削除するか確認
+        cleanup = input("進捗ファイルを削除しますか？ (y/n): ").lower().strip()
+        if cleanup == 'y':
+            clear_progress()
+            
+    except KeyboardInterrupt:
+        print(f"\n⚠️  処理が中断されました。")
+        save_progress(processed_geohashes, all_geohashes)
+        print("進捗は保存されました。次回は続きから実行できます。")
+    except Exception as e:
+        print(f"\n❌ 予期しないエラー: {e}")
+        save_progress(processed_geohashes, all_geohashes)
+        print("進捗は保存されました。")
 
 
 if __name__ == "__main__":
