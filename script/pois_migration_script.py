@@ -141,6 +141,15 @@ def is_riverside_park(place_name, place_types):
 def ensure_grid_cells_exist(supabase: Client, geohashes):
     """DBにgrid_cellが存在することを確認し、なければ作成する。geohash->idの辞書を返す。"""
     print("グリッドセルの準備を開始します...")
+    
+    # 既存のgrid_cellsを確認
+    try:
+        existing_response = supabase.table('grid_cells').select('id, geohash').execute()
+        print(f"🔍 既存のgrid_cells: {len(existing_response.data)}件")
+    except Exception as e:
+        print(f"❌ grid_cellsテーブルへのアクセスエラー: {e}")
+        return None
+    
     cells_to_insert = []
     for geohash in geohashes:
         bbox = pgh.decode_bbox(geohash)
@@ -153,15 +162,27 @@ def ensure_grid_cells_exist(supabase: Client, geohashes):
     try:
         # geohashが重複した場合は無視する (upsert)
         supabase.table('grid_cells').upsert(cells_to_insert, on_conflict='geohash').execute()
-        print("グリッドセルの準備が完了しました。")
+        print("✅ グリッドセルの準備が完了しました。")
     except Exception as e:
-        print(f"グリッドセル準備エラー: {e}")
+        print(f"❌ グリッドセル準備エラー: {e}")
         return None
 
     # 作成/確認したセルの情報をDBから取得して辞書を作成
-    response = supabase.table('grid_cells').select('id, geohash').in_('geohash', geohashes).execute()
-    geohash_to_id_map = {cell['geohash']: cell['id'] for cell in response.data}
-    return geohash_to_id_map
+    try:
+        response = supabase.table('grid_cells').select('id, geohash').in_('geohash', geohashes).execute()
+        geohash_to_id_map = {cell['geohash']: cell['id'] for cell in response.data}
+        
+        # 全てのgeohashに対してgrid_cell_idが取得できたか確認
+        missing_geohashes = [gh for gh in geohashes if gh not in geohash_to_id_map]
+        if missing_geohashes:
+            print(f"⚠️ 警告: {len(missing_geohashes)}個のgeohashでgrid_cell_idが取得できませんでした")
+            print(f"   例: {missing_geohashes[:3]}")
+        
+        print(f"📦 geohash->grid_cell_id マッピング: {len(geohash_to_id_map)}件")
+        return geohash_to_id_map
+    except Exception as e:
+        print(f"❌ grid_cell取得エラー: {e}")
+        return None
 
 def fetch_places(lat, lon, radius, poi_type):
     """Google Places APIからスポット情報を取得する"""
@@ -297,10 +318,24 @@ def populate_pois_chunk(supabase: Client, geohash_chunk, geohash_to_id_map, proc
 
             if pois_to_insert:
                 try:
+                    # POI保存前にgrid_cell_idの検証
+                    grid_cell_id = geohash_to_id_map.get(geohash)
+                    if not grid_cell_id:
+                        print(f"    ❌ エラー: geohash {geohash} に対するgrid_cell_idが見つかりません")
+                        continue
+                    
+                    # 保存直前にgrid_cellの存在を再確認
+                    verify_response = supabase.table('grid_cells').select('id').eq('id', grid_cell_id).execute()
+                    if not verify_response.data:
+                        print(f"    ❌ 致命的エラー: grid_cell ID {grid_cell_id} が保存直前に見つかりません")
+                        continue
+                    
+                    print(f"    💾 {len(pois_to_insert)}件のPOIをDBに保存中（grid_cell_id: {grid_cell_id}）...")
                     supabase.table('pois').upsert(pois_to_insert, on_conflict='id').execute()
-                    print(f"    -> {len(pois_to_insert)}件のPOIをDBに保存しました。")
+                    print(f"    ✅ {len(pois_to_insert)}件のPOIをDBに保存しました。")
                 except Exception as e:
-                    print(f"    -> POI挿入エラー: {e}")
+                    print(f"    ❌ POI挿入エラー: {e}")
+                    print(f"       Geohash: {geohash}, grid_cell_id: {geohash_to_id_map.get(geohash)}")
                     continue  # このGeohashは失敗として扱うが、次に進む
             
             # 成功したGeohashを記録
@@ -351,10 +386,13 @@ def main():
         return
     
     # グリッドセルを準備し、geohash->idの対応辞書を取得
+    print("\n🔧 グリッドセル準備中...")
     geohash_to_id_map = ensure_grid_cells_exist(supabase, all_geohashes)
     if not geohash_to_id_map:
-        print("グリッドセルの準備に失敗したため、処理を中断します。")
+        print("❌ グリッドセルの準備に失敗したため、処理を中断します。")
         return
+    
+    print(f"✅ grid_cellマッピング準備完了: {len(geohash_to_id_map)}件")
 
     # チャンク単位で処理
     try:
@@ -366,26 +404,27 @@ def main():
             print(f"\n📦 チャンク {chunk_num}/{total_chunks} を処理中...")
             populate_pois_chunk(supabase, chunk, geohash_to_id_map, processed_geohashes, all_geohashes)
             
-            print(f"チャンク {chunk_num} 完了。進捗: {len(processed_geohashes)}/{len(all_geohashes)}")
+            print(f"✅ チャンク {chunk_num} 完了。進捗: {len(processed_geohashes)}/{len(all_geohashes)}")
             
         # 最終進捗保存
         save_progress(processed_geohashes, all_geohashes)
         print(f"\n🎉 全処理が完了しました！")
-        print(f"処理済み: {len(processed_geohashes)}/{len(all_geohashes)}")
+        print(f"📊 処理済み: {len(processed_geohashes)}/{len(all_geohashes)}")
         
         # 完了後に進捗ファイルを削除するか確認
         cleanup = input("進捗ファイルを削除しますか？ (y/n): ").lower().strip()
         if cleanup == 'y':
             clear_progress()
+            print("🗑️  進捗ファイルを削除しました。")
             
     except KeyboardInterrupt:
         print(f"\n⚠️  処理が中断されました。")
         save_progress(processed_geohashes, all_geohashes)
-        print("進捗は保存されました。次回は続きから実行できます。")
+        print("💾 進捗は保存されました。次回は続きから実行できます。")
     except Exception as e:
-        print(f"\n❌ 予期しないエラー: {e}")
+        print(f"\n❌ 予期しないエラーが発生しました: {e}")
         save_progress(processed_geohashes, all_geohashes)
-        print("進捗は保存されました。")
+        print("💾 進捗は保存されました。問題を解決してから再実行してください。")
 
 
 if __name__ == "__main__":
