@@ -39,9 +39,7 @@ CREATE INDEX IF NOT EXISTS idx_pois_rate ON pois (rate DESC);
 
 -- 名前での検索用（部分一致検索対応）
 -- 注意: 現在 'english' テキスト検索設定を使用していますが、日本語POI名の検索には最適ではありません。
--- 可能であれば 'japanese' 設定を利用するか、ハイブリッドアプローチ（両方のインデックス作成）を推奨します。
--- 例: CREATE INDEX ... ON pois USING GIN (to_tsvector('japanese', name));
--- 今後の改善を検討してください。
+-- そもそもこれいらんかった。仮に導入するならPGroongaを検討すること。
 CREATE INDEX IF NOT EXISTS idx_pois_name ON pois USING GIN (to_tsvector('english', name));
 
 -- === Row Level Security (RLS) ポリシー ===
