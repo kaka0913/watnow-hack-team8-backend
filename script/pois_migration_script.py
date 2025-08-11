@@ -37,12 +37,64 @@ RIVERSIDE_KEYWORDS = [
 
 # --- エリア定義 (4人分担用) ---
 
-# 【KABUさんの担当エリア】京都中心部＋嵐山 (約330 Geohash)
-BOUNDING_BOXES_KABU = [
-    {'name': 'A: Shijo_Karasuma_Kawaramachi', 'min_lat': 35.000, 'max_lat': 35.008, 'min_lon': 135.758, 'max_lon': 135.775},
-    {'name': 'A: Gion_Higashiyama', 'min_lat': 34.992, 'max_lat': 35.008, 'min_lon': 135.774, 'max_lon': 135.788},
-    {'name': 'A: Arashiyama_Sagano', 'min_lat': 35.008, 'max_lat': 35.020, 'min_lon': 135.665, 'max_lon': 135.685},
+# 【KABUさんの担当エリア】京都中心部＋嵐山 - 細分化版 (各エリア約30分処理)
+
+# KABU_1: 四条烏丸エリア中心部
+BOUNDING_BOXES_KABU_1 = [
+    {'name': 'A1-1: Shijo_Karasuma_Core', 'min_lat': 35.002, 'max_lat': 35.005, 'min_lon': 135.758, 'max_lon': 135.765},
+    {'name': 'A1-2: Karasuma_Gojo', 'min_lat': 35.000, 'max_lat': 35.003, 'min_lon': 135.760, 'max_lon': 135.768},
 ]
+
+# KABU_2: 河原町エリア
+BOUNDING_BOXES_KABU_2 = [
+    {'name': 'A2-1: Kawaramachi_Shijo', 'min_lat': 35.003, 'max_lat': 35.006, 'min_lon': 135.765, 'max_lon': 135.772},
+    {'name': 'A2-2: Kawaramachi_Sanjo', 'min_lat': 35.005, 'max_lat': 35.008, 'min_lon': 135.767, 'max_lon': 135.775},
+]
+
+# KABU_3: 祇園エリア西部
+BOUNDING_BOXES_KABU_3 = [
+    {'name': 'A3-1: Gion_West', 'min_lat': 34.995, 'max_lat': 35.000, 'min_lon': 135.774, 'max_lon': 135.781},
+    {'name': 'A3-2: Gion_Shirakawa', 'min_lat': 35.000, 'max_lat': 35.004, 'min_lon': 135.774, 'max_lon': 135.780},
+]
+
+# KABU_4: 祇園・東山エリア東部
+BOUNDING_BOXES_KABU_4 = [
+    {'name': 'A4-1: Higashiyama_South', 'min_lat': 34.992, 'max_lat': 34.998, 'min_lon': 135.780, 'max_lon': 135.788},
+    {'name': 'A4-2: Higashiyama_North', 'min_lat': 34.998, 'max_lat': 35.004, 'min_lon': 135.780, 'max_lon': 135.788},
+]
+
+# KABU_5: 東山山麓エリア
+BOUNDING_BOXES_KABU_5 = [
+    {'name': 'A5-1: Maruyama_Yasaka', 'min_lat': 35.003, 'max_lat': 35.008, 'min_lon': 135.780, 'max_lon': 135.788},
+    {'name': 'A5-2: Chionin_Shoren', 'min_lat': 35.006, 'max_lat': 35.008, 'min_lon': 135.774, 'max_lon': 135.782},
+]
+
+# KABU_6: 嵐山エリア西部（竹林・天龍寺）
+BOUNDING_BOXES_KABU_6 = [
+    {'name': 'A6-1: Arashiyama_Bamboo', 'min_lat': 35.015, 'max_lat': 35.018, 'min_lon': 135.665, 'max_lon': 135.672},
+    {'name': 'A6-2: Tenryuji_Area', 'min_lat': 35.013, 'max_lat': 35.017, 'min_lon': 135.672, 'max_lon': 135.678},
+]
+
+# KABU_7: 嵐山エリア中央（渡月橋周辺）
+BOUNDING_BOXES_KABU_7 = [
+    {'name': 'A7-1: Togetsukyo_Bridge', 'min_lat': 35.010, 'max_lat': 35.014, 'min_lon': 135.675, 'max_lon': 135.682},
+    {'name': 'A7-2: Arashiyama_Station', 'min_lat': 35.012, 'max_lat': 35.016, 'min_lon': 135.678, 'max_lon': 135.685},
+]
+
+# KABU_8: 嵯峨野エリア北部
+BOUNDING_BOXES_KABU_8 = [
+    {'name': 'A8-1: Sagano_North', 'min_lat': 35.017, 'max_lat': 35.020, 'min_lon': 135.668, 'max_lon': 135.675},
+    {'name': 'A8-2: Adashino_Nenbutsuji', 'min_lat': 35.018, 'max_lat': 35.020, 'min_lon': 135.675, 'max_lon': 135.682},
+]
+
+# ★★★ 実行時に使用するエリアを選択してください ★★★
+# 処理順序の推奨：KABU_1 → KABU_2 → KABU_3 → KABU_4 → KABU_5 → KABU_6 → KABU_7 → KABU_8
+
+# 統合エリア（全て実行する場合）
+BOUNDING_BOXES_KABU_ALL = (
+    BOUNDING_BOXES_KABU_1 + BOUNDING_BOXES_KABU_2 + BOUNDING_BOXES_KABU_3 + BOUNDING_BOXES_KABU_4 +
+    BOUNDING_BOXES_KABU_5 + BOUNDING_BOXES_KABU_6 + BOUNDING_BOXES_KABU_7 + BOUNDING_BOXES_KABU_8
+)
 
 # 【KIMさんの担当エリア】京都南部・北部＋滋賀西部 (約320 Geohash)
 BOUNDING_BOXES_KIM = [
@@ -65,9 +117,31 @@ BOUNDING_BOXES_RIHO = [
     {'name': 'D: Shiga_Kusatsu', 'min_lat': 35.010, 'max_lat': 35.035, 'min_lon': 135.940, 'max_lon': 135.970},
 ]
 
+# ===================================================================
+# KABUさん向け使用方法:
+# 1. 上記のTARGET_BOUNDING_BOXESで1つずつエリアを選択
+# 2. 推奨順序: KABU_1 → KABU_2 → KABU_3 → KABU_4 → KABU_5 → KABU_6 → KABU_7 → KABU_8
+# 3. 各エリアは約30分で完了予定（ネットワーク状況により変動）
+# 4. 進捗ファイルが自動保存されるため、中断しても続きから実行可能
+# ===================================================================
+
 
 # ★★★ 自分の担当に合わせて、以下の1行のコメントを外してください ★★★
-TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU
+
+# KABUさん用（細分化エリア - 1つずつ実行推奨）
+TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU_1  # 四条烏丸エリア中心部（約30分）
+# TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU_2  # 河原町エリア（約30分）
+# TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU_3  # 祇園エリア西部（約30分）
+# TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU_4  # 祇園・東山エリア東部（約30分）
+# TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU_5  # 東山山麓エリア（約30分）
+# TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU_6  # 嵐山エリア西部（約30分）
+# TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU_7  # 嵐山エリア中央（約30分）
+# TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU_8  # 嵯峨野エリア北部（約30分）
+
+# 全エリアを一度に実行する場合（非推奨：時間がかかります）
+# TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU_ALL
+
+# 他のメンバー用
 # TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KIM
 # TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KOSUKE
 # TARGET_BOUNDING_BOXES = BOUNDING_BOXES_RIHO
@@ -152,8 +226,8 @@ def ensure_grid_cells_exist(supabase: Client, geohashes):
     
     cells_to_insert = []
     for geohash in geohashes:
-        bbox = pgh.decode_bbox(geohash)
-        cell_polygon = box(bbox.west, bbox.south, bbox.east, bbox.north)
+        bbox = pgh.get_bounding_box(geohash)
+        cell_polygon = box(bbox.min_lon, bbox.min_lat, bbox.max_lon, bbox.max_lat)
         cells_to_insert.append({
             'geohash': geohash,
             'geometry': f"SRID=4326;{cell_polygon.wkt}"
@@ -185,41 +259,76 @@ def ensure_grid_cells_exist(supabase: Client, geohashes):
         return None
 
 def fetch_places(lat, lon, radius, poi_type):
-    """Google Places APIからスポット情報を取得する"""
+    """Google Places API (New)からスポット情報を取得する"""
     all_places = []
-    url = "https://maps.googleapis.com/maps/api/place/nearbysearch/json"
-    params = {
-        'location': f"{lat},{lon}",
-        'radius': radius,
-        'type': poi_type,
-        'key': GOOGLE_MAPS_API_KEY,
-        'language': 'ja'
+    url = "https://places.googleapis.com/v1/places:searchNearby"
+    
+    # POI_TYPEをPlaces API (New)の形式に変換
+    type_mapping = {
+        'cafe': 'cafe',
+        'park': 'park',
+        'tourist_attraction': 'tourist_attraction',
+        'art_gallery': 'art_gallery',
+        'book_store': 'book_store',
+        'bakery': 'bakery',
+        'store': 'store',
+        'home_goods_store': 'home_goods_store',
+        'museum': 'museum',
+        'shrine': 'hindu_temple',  # shrineに最も近いタイプ
+        'temple': 'hindu_temple',
+        'florist': 'florist',
+        'library': 'library',
+        'riverside_park': 'park'  # riverside_parkは後でフィルタリング
+    }
+    
+    included_type = type_mapping.get(poi_type, poi_type)
+    
+    headers = {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
+        'X-Goog-FieldMask': 'places.id,places.displayName,places.location,places.rating,places.types,places.primaryType'
+    }
+    
+    data = {
+        'locationRestriction': {
+            'circle': {
+                'center': {
+                    'latitude': lat,
+                    'longitude': lon
+                },
+                'radius': radius
+            }
+        },
+        'includedTypes': [included_type],
+        'maxResultCount': 20,
+        'languageCode': 'ja'
     }
     
     retry_count = 0
     while retry_count <= MAX_RETRIES:
         try:
-            response = requests.get(url, params=params)
+            response = requests.post(url, headers=headers, json=data)
             response.raise_for_status()
             results = response.json()
             
-            # APIエラーレスポンスの確認
-            if results.get('status') == 'OVER_QUERY_LIMIT':
-                print(f"    -> API制限に達しました。60秒待機します...")
-                time.sleep(60)
-                retry_count += 1
-                continue
-            elif results.get('status') not in ['OK', 'ZERO_RESULTS']:
-                print(f"    -> API警告: {results.get('status')}")
+            # 新しいAPIの結果を古い形式に変換
+            places = results.get('places', [])
+            for place in places:
+                converted_place = {
+                    'place_id': place.get('id', ''),
+                    'name': place.get('displayName', {}).get('text', ''),
+                    'rating': place.get('rating', 0),
+                    'types': place.get('types', []),
+                    'geometry': {
+                        'location': {
+                            'lat': place.get('location', {}).get('latitude', 0),
+                            'lng': place.get('location', {}).get('longitude', 0)
+                        }
+                    }
+                }
+                all_places.append(converted_place)
             
-            all_places.extend(results.get('results', []))
-            
-            if 'next_page_token' in results and results['next_page_token']:
-                params['pagetoken'] = results['next_page_token']
-                time.sleep(2) # Googleの推奨に従い、次のページ取得前に待機
-                params.pop('pagetoken', None)  # 次のループのためにクリア
-            else:
-                break
+            break  # 新しいAPIはページングが異なるため、一度で取得
                 
         except requests.exceptions.RequestException as e:
             retry_count += 1
@@ -231,6 +340,9 @@ def fetch_places(lat, lon, radius, poi_type):
             else:
                 print(f"    -> 最大リトライ回数に達しました: {e}")
                 break
+        except Exception as e:
+            print(f"    -> API警告: {str(e)}")
+            break
             
     return all_places
 
