@@ -133,72 +133,161 @@ def search_places_by_type(lat, lon, place_type, radius=RADIUS):
     
     return []
 
-def fetch_pois_for_geohash(geohash):
+def get_pois_for_geohash(geohash):
     """指定されたGeohashエリアのPOIを取得"""
     lat, lon = pgh.decode(geohash)
-    all_pois = []
+    poi_dict = {}  # place_id をキーにしてPOIを管理
     
     print(f"  Geohash {geohash} (緯度: {lat:.5f}, 経度: {lon:.5f}) のPOI取得開始")
+    
+    # Grid Cellを保存してIDを取得
+    grid_cell_id = save_grid_cell(geohash)
+    if not grid_cell_id:
+        print(f"    Grid Cell保存失敗のため、POI取得をスキップ")
+        return []
     
     for place_type in POI_TYPES.keys():
         pois = search_places_by_type(lat, lon, place_type)
         for poi in pois:
-            poi_data = {
-                'place_id': poi.get('place_id'),
-                'name': poi.get('name'),
-                'category': POI_TYPES[place_type],
-                'latitude': poi.get('geometry', {}).get('location', {}).get('lat'),
-                'longitude': poi.get('geometry', {}).get('location', {}).get('lng'),
-                'rating': poi.get('rating'),
-                'user_ratings_total': poi.get('user_ratings_total'),
-                'address': poi.get('vicinity'),
-                'photo_reference': poi.get('photos', [{}])[0].get('photo_reference') if poi.get('photos') else None,
-                'geohash': geohash
-            }
-            all_pois.append(poi_data)
+            place_id = poi.get('place_id')
+            if not place_id:
+                continue
+                
+            # POIの位置情報を取得
+            poi_lat = poi.get('geometry', {}).get('location', {}).get('lat')
+            poi_lng = poi.get('geometry', {}).get('location', {}).get('lng')
+            
+            if not poi_lat or not poi_lng:
+                continue
+                
+            if place_id in poi_dict:
+                # 既存POIにカテゴリを追加
+                existing_categories = set(poi_dict[place_id]['categories'])
+                new_category = POI_TYPES[place_type]
+                poi_dict[place_id]['categories'] = list(existing_categories.union({new_category}))
+                print(f"    POI '{poi.get('name', 'Unknown')}' にカテゴリ '{new_category}' を追加")
+            else:
+                # 新しいPOI
+                point_wkt = f"POINT({poi_lng} {poi_lat})"
+                poi_data = {
+                    'id': place_id,  # Google Place IDを主キーとして使用
+                    'name': poi.get('name'),
+                    'location': f"SRID=4326;{point_wkt}",  # PostGIS GEOMETRY形式
+                    'categories': [POI_TYPES[place_type]],  # JSONB配列形式
+                    'grid_cell_id': grid_cell_id,  # 外部キー
+                    'rate': poi.get('rating', 0.0)  # デフォルト値0.0
+                }
+                poi_dict[place_id] = poi_data
         
         # API制限対策
-        time.sleep(0.1)
+        time.sleep(1)
     
-    print(f"  Geohash {geohash}: {len(all_pois)}件のPOI取得完了")
+    all_pois = list(poi_dict.values())
+    print(f"  Geohash {geohash}: {len(all_pois)}件のユニークPOI取得完了")
+    
+    # カテゴリ統計を出力
+    category_stats = {}
+    for poi in all_pois:
+        for category in poi['categories']:
+            category_stats[category] = category_stats.get(category, 0) + 1
+    if category_stats:
+        stats_str = ', '.join([f"{cat}:{count}" for cat, count in category_stats.items()])
+        print(f"    カテゴリ内訳: {stats_str}")
+    
     return all_pois
 
 def save_grid_cell(geohash):
     """Grid Cellをデータベースに保存"""
     try:
+        # 既存チェック
+        existing = supabase.table('grid_cells').select('id').eq('geohash', geohash).execute()
+        if existing.data:
+            grid_cell_id = existing.data[0]['id']
+            print(f"    Grid Cell {geohash} は既存 (ID: {grid_cell_id})")
+            return grid_cell_id
+        
+        # Geohashから中心座標とポリゴンを取得
         lat, lon = pgh.decode(geohash)
+        lat_err, lon_err = pgh.decode_exact(geohash)[1]
+        
+        # ポリゴンの境界を計算
+        min_lat, max_lat = lat - lat_err, lat + lat_err
+        min_lon, max_lon = lon - lon_err, lon + lon_err
+        
+        # PostGIS POLYGON形式のWKT文字列を作成
+        polygon_wkt = f"POLYGON(({min_lon} {min_lat}, {max_lon} {min_lat}, {max_lon} {max_lat}, {min_lon} {max_lat}, {min_lon} {min_lat}))"
         
         grid_cell_data = {
-            'geohash': geohash,
-            'center_latitude': lat,
-            'center_longitude': lon,
-            'created_at': datetime.now().isoformat()
+            'geometry': f"SRID=4326;{polygon_wkt}",
+            'geohash': geohash
         }
         
         result = supabase.table('grid_cells').insert(grid_cell_data).execute()
         
         if result.data:
-            print(f"    Grid Cell {geohash} 保存成功")
-            return True
+            grid_cell_id = result.data[0]['id']
+            print(f"    Grid Cell {geohash} 保存成功 (ID: {grid_cell_id})")
+            return grid_cell_id
         else:
             print(f"    Grid Cell {geohash} 保存失敗")
-            return False
+            return None
             
     except Exception as e:
         print(f"    Grid Cell {geohash} 保存エラー: {e}")
         return False
 
 def save_pois_to_db(pois):
-    """POIをデータベースに保存"""
+    """POIをデータベースに保存（upsert機能使用、カテゴリマージ対応）"""
     if not pois:
         return 0
     
-    saved_count = 0
+    # POIをplace_idでグループ化して、複数カテゴリをマージ
+    poi_dict = {}
     for poi in pois:
+        place_id = poi['id']
+        if place_id in poi_dict:
+            # 既存POIにカテゴリを追加
+            existing_categories = set(poi_dict[place_id]['categories'])
+            new_categories = set(poi['categories'])
+            poi_dict[place_id]['categories'] = list(existing_categories.union(new_categories))
+        else:
+            # 新しいPOI
+            poi_dict[place_id] = poi.copy()
+    
+    saved_count = 0
+    
+    for poi in poi_dict.values():
         try:
-            result = supabase.table('pois').insert(poi).execute()
-            if result.data:
-                saved_count += 1
+            # 既存POIをチェックしてカテゴリをマージ
+            existing = supabase.table('pois').select('id, categories').eq('id', poi['id']).execute()
+            
+            if existing.data:
+                # 既存POIのカテゴリと新しいカテゴリをマージ
+                existing_categories = set(existing.data[0].get('categories', []))
+                new_categories = set(poi['categories'])
+                merged_categories = list(existing_categories.union(new_categories))
+                poi['categories'] = merged_categories
+                
+                # upsertで更新
+                result = supabase.table('pois').upsert(
+                    poi, 
+                    on_conflict='id',
+                    count='exact'
+                ).execute()
+                
+                if result.data:
+                    categories_str = ', '.join(poi['categories'])
+                    print(f"    POI '{poi.get('name', 'Unknown')}' 更新成功 (カテゴリ: {categories_str})")
+                    saved_count += 1
+            else:
+                # 新規挿入
+                result = supabase.table('pois').insert(poi).execute()
+                
+                if result.data:
+                    categories_str = ', '.join(poi['categories'])
+                    print(f"    POI '{poi.get('name', 'Unknown')}' 新規保存成功 (カテゴリ: {categories_str})")
+                    saved_count += 1
+                    
         except Exception as e:
             print(f"    POI保存エラー ({poi.get('name', 'Unknown')}): {e}")
     
@@ -215,11 +304,8 @@ def process_chunk(chunk_geohashes, chunk_index, total_chunks):
     for i, geohash in enumerate(chunk_geohashes):
         print(f"\n[{i+1}/{len(chunk_geohashes)}] 処理中: {geohash}")
         
-        # Grid Cell保存
-        save_grid_cell(geohash)
-        
-        # POI取得
-        pois = fetch_pois_for_geohash(geohash)
+        # POI取得（Grid Cell保存も含む）
+        pois = get_pois_for_geohash(geohash)
         
         # POI保存
         saved_count = save_pois_to_db(pois)
