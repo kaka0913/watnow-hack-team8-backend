@@ -3,6 +3,7 @@ package model
 type GridCell struct {
 	ID       int       `json:"id" db:"id"`             // グリッドセルID
 	Geometry *Geometry `json:"geometry" db:"geometry"` // メッシュ領域（PostGIS GEOMETRY型）
+	Geohash  string    `json:"geohash" db:"geohash"`   // Geohash識別子
 }
 
 // GridCellDocument Firestoreのグリッドセルドキュメント

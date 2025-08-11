@@ -27,6 +27,7 @@ erDiagram
     grid_cells {
         INTEGER id PK "グリッドセルID"
         GEOMETRY geometry "メッシュ領域"
+        VARCHAR geohash "Geohash識別子"
     }
 
     grid_cells ||--|{ pois : "contains"
@@ -36,7 +37,7 @@ erDiagram
 
 - `pois`テーブルの外部キー (`grid_cell_id`)
 - `pois`テーブルの`location`（GiSTインデックス）、`category`（BTREEインデックス）
-- `grid_cells`テーブルの`geometry`（GiSTインデックス）
+- `grid_cells`テーブルの`geometry`（GiSTインデックス）、`geohash`（BTREEインデックス）
 
 ## Firestoreのデータ構造
 
