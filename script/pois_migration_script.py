@@ -129,7 +129,7 @@ BOUNDING_BOXES_RIHO = [
 # ★★★ 自分の担当に合わせて、以下の1行のコメントを外してください ★★★
 
 # KABUさん用（細分化エリア - 1つずつ実行推奨）
-TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU_1  # 四条烏丸エリア中心部（約30分）
+# TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU_1  # 四条烏丸エリア中心部（約30分）
 # TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU_2  # 河原町エリア（約30分）
 # TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU_3  # 祇園エリア西部（約30分）
 # TARGET_BOUNDING_BOXES = BOUNDING_BOXES_KABU_4  # 祇園・東山エリア東部（約30分）
