@@ -19,7 +19,7 @@ erDiagram
         VARCHAR id PK "ユニークなスポットID"
         VARCHAR name "スポット名"
         GEOMETRY location "位置情報"
-        JSONB categories "カテゴリ"
+        VARCHAR category "カテゴリ（単一文字列）"
         INTEGER grid_cell_id FK "グリッドセルID"
         DOUBLE rate "評価値"
     }
@@ -35,7 +35,7 @@ erDiagram
 ### **インデックス**
 
 - `pois`テーブルの外部キー (`grid_cell_id`)
-- `pois`テーブルの`location`（GiSTインデックス）、`categories`（GINインデックス）
+- `pois`テーブルの`location`（GiSTインデックス）、`category`（BTREEインデックス）
 - `grid_cells`テーブルの`geometry`（GiSTインデックス）
 
 ## Firestoreのデータ構造
@@ -57,8 +57,8 @@ erDiagram
 - **`location` (ジオポイント):**
     - **内容:** スポットの緯度経度。Firestoreの`GeoPoint`型を使います。
     - **理由:** ルート計算を行う上で、**位置情報**は絶対に欠かせません。
-- **`categories` (文字列の配列):**
-    - **内容:** カテゴリのリスト（例: `["cafe", "park", "art_gallery"]`）。
+- **`category` (文字列):**
+    - **内容:** メインカテゴリ（例: `"cafe"`, `"park"`, `"art_gallery"`）。
     - **理由:** 「カフェに寄りたい」といったユーザーの希望に応じて、**スポットをフィルタリングする**ために使います。
 - **`rating` (数値):**
     - **内容:** スポットの評価（Googleレビューの評価など、1.0〜5.0）。
@@ -70,14 +70,14 @@ erDiagram
     "id": "ChIJN1t_tDeuEmsRUsoyG83frY4",
     "name": "スターバックスコーヒー 八重洲地下街店",
     "location": { "latitude": 35.681, "longitude": 139.768 },
-    "categories": ["cafe", "food"],
+    "category": "cafe",
     "rating": 3.8
   },
   {
     "id": "ChIJC_zAsDGtEmsR6I234567890",
     "name": "日比谷公園",
     "location": { "latitude": 35.675, "longitude": 139.758 },
-    "categories": ["park", "nature"],
+    "category": "park",
     "rating": 4.4
   }
 ]

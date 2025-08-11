@@ -279,11 +279,14 @@ def populate_pois_chunk(supabase: Client, geohash_chunk, geohash_to_id_map, proc
                         loc = place['geometry']['location']
                         point = Point(loc['lng'], loc['lat'])
                         
+                        # メインカテゴリを決定（最初の要素または poi_type）
+                        main_category = place_types[0] if place_types else poi_type
+                        
                         pois_to_insert.append({
                             'id': place_id,
                             'name': place_name,
                             'location': f"SRID=4326;{point.wkt}",
-                            'categories': place_types,
+                            'category': main_category,
                             'rate': rating,
                             'grid_cell_id': geohash_to_id_map.get(geohash)
                         })
@@ -304,14 +307,12 @@ def populate_pois_chunk(supabase: Client, geohash_chunk, geohash_to_id_map, proc
                         loc = place['geometry']['location']
                         point = Point(loc['lng'], loc['lat'])
                         
-                        # カテゴリにriverside_parkを追加
-                        place_types_with_riverside = place_types + ['riverside_park']
-                        
+                        # riverside_parkを優先カテゴリとして設定
                         pois_to_insert.append({
                             'id': place_id,
                             'name': place_name,
                             'location': f"SRID=4326;{point.wkt}",
-                            'categories': place_types_with_riverside,
+                            'category': 'riverside_park',
                             'rate': rating,
                             'grid_cell_id': geohash_to_id_map.get(geohash)
                         })

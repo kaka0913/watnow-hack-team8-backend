@@ -5,7 +5,7 @@ type POI struct {
 	ID         string    `json:"id" db:"id"`                     // ユニークなスポットID
 	Name       string    `json:"name" db:"name"`                 // スポット名
 	Location   *Geometry `json:"location" db:"location"`         // 位置情報（PostGIS GEOMETRY型）
-	Categories []string  `json:"categories" db:"categories"`     // カテゴリ
+	Category   string    `json:"category" db:"category"`         // カテゴリ（単一文字列）
 	GridCellID int       `json:"grid_cell_id" db:"grid_cell_id"` // グリッドセルID
 	Rate       float64   `json:"rate" db:"rate"`                 // 評価値
 }
@@ -39,9 +39,9 @@ func (l *Location) FromGeometry(g *Geometry) {
 
 // POIObject Firestoreのグリッドセル内のPOI情報
 type POIObject struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	Location   *Location `json:"location"` // Firestoreではジオポイント
-	Categories []string  `json:"categories"`
-	Rating     float64   `json:"rating"`
+	ID       string    `json:"id"`
+	Name     string    `json:"name"`
+	Location *Location `json:"location"` // Firestoreではジオポイント
+	Category string    `json:"category"` // カテゴリ（単一文字列）
+	Rating   float64   `json:"rating"`
 }
