@@ -9,7 +9,7 @@ import (
 	"github.com/joho/godotenv"
 
 	"Team8-App/internal/usecase"
-	"Team8-App/internal/database"
+	"Team8-App/internal/infrastructure/database"
 	"Team8-App/internal/handler"
 	"Team8-App/internal/repository"
 )

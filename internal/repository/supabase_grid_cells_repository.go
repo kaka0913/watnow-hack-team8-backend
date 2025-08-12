@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"Team8-App/internal/database"
+	"Team8-App/internal/infrastructure/database"
 	"Team8-App/internal/domain/model"
 	"Team8-App/internal/domain/repository"
 )

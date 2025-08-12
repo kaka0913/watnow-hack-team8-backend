@@ -8,7 +8,7 @@ import (
 	"github.com/paulmach/orb"
 	"github.com/paulmach/orb/encoding/wkt"
 
-	"Team8-App/internal/database"
+	"Team8-App/internal/infrastructure/database"
 	"Team8-App/internal/domain/model"
 	"Team8-App/internal/domain/repository"
 )
