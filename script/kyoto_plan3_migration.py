@@ -32,28 +32,91 @@ MAX_RETRIES = 3
 RETRY_DELAY = 2  # 秒
 RADIUS = 1000  # メートル
 
-# POIタイプのマッピング（新API対応、日本語対応）
+# POIタイプのマッピング（散歩が楽しくなるスポット重視）
 POI_TYPES = {
-    'restaurant': 'レストラン',
     'cafe': 'カフェ',
-    'tourist_attraction': '観光名所',
-    'museum': '美術館・博物館',
     'park': '公園',
-    'shopping_mall': 'ショッピングモール',
-    'convenience_store': 'コンビニエンスストア',
-    'gas_station': 'ガソリンスタンド',
-    'hospital': '病院',
-    'pharmacy': '薬局',
-    'bank': '銀行',
-    'atm': 'ATM',
-    'lodging': '宿泊施設',
-    'transit_station': '交通機関'
+    'tourist_attraction': '観光名所',  # 神社・寺院も含む
+    'art_gallery': '美術館・ギャラリー',
+    'book_store': '書店',
+    'bakery': 'ベーカリー',
+    'store': '店舗',
+    'home_goods_store': '雑貨店',
+    'museum': '博物館',
+    'florist': '花屋',
+    'library': '図書館'
 }
+
+# 河川敷判定用キーワード
+RIVERSIDE_KEYWORDS = [
+    '河川敷', '川原', '河原', '河川', '堤防', '川辺', '水辺', 
+    'リバーサイド', 'riverside', '川沿い', '河岸'
+]
+
+# 評価基準
+MIN_RATING = 3.5      # 一般POIの最低評価
+MIN_RATING_PARK = 3.0 # 公園の最低評価
 
 def load_plan3_config():
     """プラン3の設定を読み込み"""
     with open('/Users/kaka/dev/Go/Team8-App/script/plan3_execution_config.json', 'r', encoding='utf-8') as f:
         return json.load(f)
+
+def is_riverside_park(poi_name, poi_address=None):
+    """POIが河川敷公園かどうかを判定"""
+    if not poi_name:
+        return False
+    
+    # 名前での判定
+    for keyword in RIVERSIDE_KEYWORDS:
+        if keyword.lower() in poi_name.lower():
+            return True
+    
+    # 住所での判定（住所がある場合）
+    if poi_address:
+        for keyword in RIVERSIDE_KEYWORDS:
+            if keyword.lower() in poi_address.lower():
+                return True
+    
+    return False
+
+def is_shrine_or_temple(poi_name):
+    """POIが神社・寺院かどうかを判定し、詳細カテゴリを返す"""
+    if not poi_name:
+        return None
+    
+    # 神社キーワード
+    shrine_keywords = ['神社', '神宮', '稲荷', '八幡', '天満宮', '大社', '宮', '社']
+    # 寺院キーワード
+    temple_keywords = ['寺', '院', '庵', '坊', '禅', '堂', '観音', '不動']
+    
+    name_lower = poi_name.lower()
+    
+    # 神社の判定
+    for keyword in shrine_keywords:
+        if keyword in poi_name:
+            return '神社'
+    
+    # 寺院の判定
+    for keyword in temple_keywords:
+        if keyword in poi_name:
+            return '寺院'
+    
+    return None
+
+def meets_rating_criteria(poi, category):
+    """POIが評価基準を満たすかどうかを判定"""
+    rating = poi.get('rating', 0.0)
+    
+    # 評価がない場合はスキップ
+    if not rating or rating == 0.0:
+        return False
+    
+    # 公園の場合は基準を緩和
+    if category == 'park':
+        return rating >= MIN_RATING_PARK
+    else:
+        return rating >= MIN_RATING
 
 def save_progress(data, filename='plan3_progress.json'):
     """進捗を保存"""
@@ -152,6 +215,10 @@ def get_pois_for_geohash(geohash):
             place_id = poi.get('place_id')
             if not place_id:
                 continue
+            
+            # 評価基準チェック
+            if not meets_rating_criteria(poi, place_type):
+                continue
                 
             # POIの位置情報を取得
             poi_lat = poi.get('geometry', {}).get('location', {}).get('lat')
@@ -159,13 +226,33 @@ def get_pois_for_geohash(geohash):
             
             if not poi_lat or not poi_lng:
                 continue
+            
+            # カテゴリを決定（特別処理対応）
+            base_category = POI_TYPES[place_type]
+            categories = [base_category]
+            poi_name = poi.get('name', '')
+            
+            # 公園の場合、河川敷公園かどうかをチェック
+            if place_type == 'park':
+                poi_address = poi.get('vicinity', '')
+                if is_riverside_park(poi_name, poi_address):
+                    categories.append('河川敷公園')
+                    print(f"    河川敷公園を検出: {poi_name}")
+            
+            # 観光名所の場合、神社・寺院かどうかをチェック
+            elif place_type == 'tourist_attraction':
+                religious_type = is_shrine_or_temple(poi_name)
+                if religious_type:
+                    categories.append(religious_type)
+                    print(f"    {religious_type}を検出: {poi_name}")
                 
             if place_id in poi_dict:
                 # 既存POIにカテゴリを追加
                 existing_categories = set(poi_dict[place_id]['categories'])
-                new_category = POI_TYPES[place_type]
-                poi_dict[place_id]['categories'] = list(existing_categories.union({new_category}))
-                print(f"    POI '{poi.get('name', 'Unknown')}' にカテゴリ '{new_category}' を追加")
+                new_categories = set(categories)
+                poi_dict[place_id]['categories'] = list(existing_categories.union(new_categories))
+                categories_str = ', '.join(categories)
+                print(f"    POI '{poi.get('name', 'Unknown')}' にカテゴリ '{categories_str}' を追加")
             else:
                 # 新しいPOI
                 point_wkt = f"POINT({poi_lng} {poi_lat})"
@@ -173,7 +260,7 @@ def get_pois_for_geohash(geohash):
                     'id': place_id,  # Google Place IDを主キーとして使用
                     'name': poi.get('name'),
                     'location': f"SRID=4326;{point_wkt}",  # PostGIS GEOMETRY形式
-                    'categories': [POI_TYPES[place_type]],  # JSONB配列形式
+                    'categories': categories,  # JSONB配列形式（河川敷公園対応）
                     'grid_cell_id': grid_cell_id,  # 外部キー
                     'rate': poi.get('rating', 0.0)  # デフォルト値0.0
                 }
@@ -187,12 +274,34 @@ def get_pois_for_geohash(geohash):
     
     # カテゴリ統計を出力
     category_stats = {}
+    riverside_count = 0
+    shrine_count = 0
+    temple_count = 0
+    
     for poi in all_pois:
         for category in poi['categories']:
             category_stats[category] = category_stats.get(category, 0) + 1
+            if category == '河川敷公園':
+                riverside_count += 1
+            elif category == '神社':
+                shrine_count += 1
+            elif category == '寺院':
+                temple_count += 1
+    
     if category_stats:
         stats_str = ', '.join([f"{cat}:{count}" for cat, count in category_stats.items()])
         print(f"    カテゴリ内訳: {stats_str}")
+        
+        special_finds = []
+        if riverside_count > 0:
+            special_finds.append(f"🌊 河川敷公園: {riverside_count}件")
+        if shrine_count > 0:
+            special_finds.append(f"⛩️ 神社: {shrine_count}件")
+        if temple_count > 0:
+            special_finds.append(f"🏯 寺院: {temple_count}件")
+        
+        if special_finds:
+            print(f"    特別検出: {', '.join(special_finds)}")
     
     return all_pois
 
