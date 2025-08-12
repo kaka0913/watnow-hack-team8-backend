@@ -7,14 +7,15 @@ import (
 	"strconv"
 
 	"Team8-App/internal/database"
-	"Team8-App/model"
+	"Team8-App/internal/domain/model"
+	"Team8-App/internal/domain/repository"
 )
 
 type SupabasePOIsRepository struct {
 	client *database.SupabaseClient
 }
 
-func NewSupabasePOIsRepository(client *database.SupabaseClient) POIsRepository {
+func NewSupabasePOIsRepository(client *database.SupabaseClient) repository.POIsRepository {
 	return &SupabasePOIsRepository{
 		client: client,
 	}

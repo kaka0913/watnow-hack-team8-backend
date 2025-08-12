@@ -8,10 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
+	"Team8-App/internal/application"
 	"Team8-App/internal/database"
 	"Team8-App/internal/handler"
 	"Team8-App/internal/repository"
-	"Team8-App/internal/service"
 )
 
 func main() {
@@ -43,7 +43,7 @@ func main() {
 
 	fmt.Println("Setting up dependency injection...")
 	walksRepo := repository.NewSupabaseWalksRepository(supabaseClient)
-	walksService := service.NewWalksService(walksRepo)
+	walksService := application.NewWalksService(walksRepo)
 	walksHandler := handler.NewWalksHandler(walksService)
 
 	// Ginルーターのセットアップ

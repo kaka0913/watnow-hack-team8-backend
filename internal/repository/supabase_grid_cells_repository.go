@@ -7,14 +7,15 @@ import (
 	"strconv"
 
 	"Team8-App/internal/database"
-	"Team8-App/model"
+	"Team8-App/internal/domain/model"
+	"Team8-App/internal/domain/repository"
 )
 
 type SupabaseGridCellsRepository struct {
 	client *database.SupabaseClient
 }
 
-func NewSupabaseGridCellsRepository(client *database.SupabaseClient) GridCellsRepository {
+func NewSupabaseGridCellsRepository(client *database.SupabaseClient) repository.GridCellsRepository {
 	return &SupabaseGridCellsRepository{
 		client: client,
 	}

@@ -5,19 +5,19 @@ import (
 	"strconv"
 	"strings"
 
-	"Team8-App/internal/service"
-	"Team8-App/model"
+	"Team8-App/internal/application"
+	"Team8-App/internal/domain/model"
 
 	"github.com/gin-gonic/gin"
 )
 
 // WalksHandler 散歩記録に関するHTTPハンドラー
 type WalksHandler struct {
-	walksService service.WalksService
+	walksService application.WalksService
 }
 
 // NewWalksHandler WalksHandlerの新しいインスタンスを作成
-func NewWalksHandler(walksService service.WalksService) *WalksHandler {
+func NewWalksHandler(walksService application.WalksService) *WalksHandler {
 	return &WalksHandler{
 		walksService: walksService,
 	}

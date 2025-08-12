@@ -1,4 +1,4 @@
-package service
+package application
 
 import (
 	"context"
@@ -6,8 +6,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"Team8-App/internal/repository"
-	"Team8-App/model"
+	"Team8-App/internal/domain/repository"
+	"Team8-App/internal/domain/model"
 )
 
 // WalksService 散歩記録に関するビジネスロジックを提供するサービス
