@@ -80,15 +80,31 @@ func (r *SupabasePOIsRepository) GetNearbyPOIs(ctx context.Context, lat, lng flo
 }
 
 func (r *SupabasePOIsRepository) GetByCategories(ctx context.Context, categories []string, lat, lng float64, radiusMeters int) ([]model.POI, error) {
-	categoriesJSON, err := json.Marshal(categories)
-	if err != nil {
-		return nil, fmt.Errorf("categoriesのJSON変換失敗: %w", err)
-	}
-
+	// 複数カテゴリのORクエリを作成
 	var pois []model.POI
 	data, count, err := r.client.GetClient().From("pois").
 		Select("*", "exact", false).
-		Filter("categories", "cs", string(categoriesJSON)).
+		In("category", categories).
+		Execute()
+
+	if err != nil {
+		return nil, fmt.Errorf("カテゴリ別POIデータの取得失敗: %w", err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &pois); err != nil {
+		return nil, fmt.Errorf("POIデータのJSONアンマーシャル失敗: %w", err)
+	}
+
+	return pois, nil
+}
+
+// GetByCategory 単一カテゴリでPOIを取得（新しいメソッド）
+func (r *SupabasePOIsRepository) GetByCategory(ctx context.Context, category string, lat, lng float64, radiusMeters int) ([]model.POI, error) {
+	var pois []model.POI
+	data, count, err := r.client.GetClient().From("pois").
+		Select("*", "exact", false).
+		Eq("category", category).
 		Execute()
 
 	if err != nil {
