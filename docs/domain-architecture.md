@@ -113,26 +113,30 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"sync"
 	"time"
 
 	"your_project/internal/domain/external"
 	"your_project/internal/domain/model"
+	"your_project/internal/domain/repository"
 	"your_project/internal/domain/strategy"
 )
 
 // RouteSuggestionService はテーマに応じたルート提案のオーケストレーションを行う
 type RouteSuggestionService interface {
-	SuggestRoutesForTheme(ctx context.Context, theme string, candidates []*model.POI) ([]*model.SuggestedRoute, error)
+	SuggestRoutesForTheme(ctx context.Context, theme string, userLocation model.LatLng) ([]*model.SuggestedRoute, error)
 }
 
 type routeSuggestionService struct {
 	directionsProvider external.DirectionsProvider
 	strategies         map[string]strategy.StrategyInterface
+	poiRepo            repository.POIRepository
 }
 
-func NewRouteSuggestionService(dp external.DirectionsProvider) RouteSuggestionService {
+func NewRouteSuggestionService(dp external.DirectionsProvider, repo repository.POIRepository) RouteSuggestionService {
 	return &routeSuggestionService{
 		directionsProvider: dp,
+		poiRepo:            repo,
 		strategies: map[string]strategy.StrategyInterface{
 			"gourmet": strategy.NewGourmetStrategy(),
 			// ... 他の戦略も同様に初期化 ...
@@ -140,7 +144,22 @@ func NewRouteSuggestionService(dp external.DirectionsProvider) RouteSuggestionSe
 	}
 }
 
-func (s *routeSuggestionService) SuggestRoutesForTheme(ctx context.Context, theme string, candidates []*model.POI) ([]*model.SuggestedRoute, error) {
+// SuggestRoutesForTheme はテーマに基づき、POI取得からルート提案までを一貫して行う
+func (s *routeSuggestionService) SuggestRoutesForTheme(ctx context.Context, theme string, userLocation model.LatLng) ([]*model.SuggestedRoute, error) {
+	// Step 1: テーマに合ったPOIカテゴリを決定し、リポジトリから候補を取得する
+	targetCategories := mapThemeToCategories(theme)
+	if len(targetCategories) == 0 {
+		return nil, errors.New("テーマに該当するカテゴリがありません: " + theme)
+	}
+	candidates, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, targetCategories, 1500, 30)
+	if err != nil {
+		return nil, fmt.Errorf("POI候補の取得に失敗しました: %w", err)
+	}
+	if len(candidates) < 3 {
+		return nil, errors.New("周辺に見つかったスポットが3件未満です")
+	}
+
+	// Step 2: 戦略を選択し、組み合わせを取得
 	selectedStrategy, ok := s.strategies[theme]
 	if !ok {
 		return nil, errors.New("対応していないテーマです: " + theme)
@@ -151,15 +170,33 @@ func (s *routeSuggestionService) SuggestRoutesForTheme(ctx context.Context, them
 		return nil, errors.New("このテーマに合うルートの組み合わせが見つかりませんでした")
 	}
 
-	var suggestedRoutes []*model.SuggestedRoute
-	for _, comb := range combinations {
-		routeName := generateRouteName(theme, comb)
-		route, err := s.optimizeAndBuildRoute(ctx, routeName, comb)
-		if err == nil {
-			suggestedRoutes = append(suggestedRoutes, route)
-		}
-	}
+	// Step 3: 組み合わせからルート構築処理を共通メソッドに委譲
+	suggestedRoutes := s.buildRoutesFromCombinations(ctx, theme, combinations)
+
 	return suggestedRoutes, nil
+}
+
+// buildRoutesFromCombinations は、複数の組み合わせから並行でルートを構築する
+func (s *routeSuggestionService) buildRoutesFromCombinations(ctx context.Context, theme string, combinations [][]*model.POI) []*model.SuggestedRoute {
+	var suggestedRoutes []*model.SuggestedRoute
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for _, comb := range combinations {
+		wg.Add(1)
+		go func(combination []*model.POI) {
+			defer wg.Done()
+			routeName := generateRouteName(theme, combination)
+			route, err := s.optimizeAndBuildRoute(ctx, routeName, combination)
+			if err == nil {
+				mu.Lock()
+				suggestedRoutes = append(suggestedRoutes, route)
+				mu.Unlock()
+			}
+		}(comb)
+	}
+	wg.Wait()
+	return suggestedRoutes
 }
 
 // optimizeAndBuildRoute は3つのスポットを巡る最短ルートを決定する
@@ -195,6 +232,28 @@ func (s *routeSuggestionService) optimizeAndBuildRoute(ctx context.Context, name
 
 	bestRoute.Spots = bestPermutation // 最適な順序のスポットをセット
 	return bestRoute, nil
+}
+
+// mapThemeToCategories はテーマ名と検索対象のPOIカテゴリをマッピングする
+func mapThemeToCategories(theme string) []string {
+	switch theme {
+	case "gourmet":
+		return []string{"cafe", "bakery"}
+	case "nature":
+		return []string{"park", "tourist_attraction"}
+	case "history":
+		return []string{"tourist_attraction", "museum", "book_store"}
+	case "art":
+		return []string{"art_gallery", "museum"}
+	case "shopping":
+		return []string{"store", "home_goods_store", "book_store", "florist"}
+	case "date":
+		return []string{"park", "cafe", "florist", "art_gallery", "museum", "book_store"}
+	case "magellan":
+		return []string{"cafe", "park", "tourist_attraction", "art_gallery", "book_store", "bakery", "store", "home_goods_store", "museum", "florist", "library"}
+	default:
+		return []string{}
+	}
 }
 
 // --- ヘルパー関数群 ---
@@ -387,5 +446,53 @@ type duration struct {
 }
 type overviewPolyline struct {
 	Points string `json:"points"`
+}
+```
+
+```go
+// internal/domain/helper/poi_helper.go
+package helper
+
+import (
+    "math"
+    "sort"
+    "your_project/internal/domain/model"
+)
+
+const earthRadiusKm = 6371.0
+
+// HaversineDistance は2地点間の距離を計算する (km)
+func HaversineDistance(p1, p2 model.LatLng) float64 {
+    lat1 := p1.Lat * math.Pi / 180; lng1 := p1.Lng * math.Pi / 180
+    lat2 := p2.Lat * math.Pi / 180; lng2 := p2.Lng * math.Pi / 180
+    dLat := lat2 - lat1; dLng := lng2 - lng1
+    a := math.Sin(dLat/2)*math.Sin(dLat/2) + math.Cos(lat1)*math.Cos(lat2)*math.Sin(dLng/2)*math.Sin(dLng/2)
+    c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+    return earthRadiusKm * c
+}
+
+// FilterByCategory は指定されたカテゴリのPOIのみを抽出する
+func FilterByCategory(pois []*model.POI, categories []string) []*model.POI {
+    // ... (実装は変更なし)
+}
+
+// FindHighestRated は最も評価の高いPOIを見つける
+func FindHighestRated(pois []*model.POI) *model.POI {
+    // ... (実装は変更なし)
+}
+
+// SortByDistance は基準地点からの距離でPOIスライスをソートする
+func SortByDistance(origin *model.POI, targets []*model.POI) {
+    // ... (実装は変更なし)
+}
+
+// RemovePOI はスライスから特定のPOIを削除する
+func RemovePOI(pois []*model.POI, target *model.POI) []*model.POI {
+    // ... (実装は変更なし)
+}
+
+// GeneratePermutations はPOIスライスの全ての順列を生成する
+func GeneratePermutations(pois []*model.POI) [][]*model.POI {
+    // ... (実装は変更なし)
 }
 ```
