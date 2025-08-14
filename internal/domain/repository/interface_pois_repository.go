@@ -17,4 +17,5 @@ type POIsRepository interface {
 	Update(ctx context.Context, poi *model.POI) error
 	Delete(ctx context.Context, id string) error
 	BulkCreate(ctx context.Context, pois []model.POI) error
+	FindNearbyByCategories(ctx context.Context, location model.LatLng, categories []string, radiusMeters int, limit int) ([]*model.POI, error)
 }

@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"strconv"
 
-	"Team8-App/internal/infrastructure/database"
 	"Team8-App/internal/domain/model"
 	"Team8-App/internal/domain/repository"
+	"Team8-App/internal/infrastructure/database"
 )
 
 type SupabasePOIsRepository struct {
@@ -188,4 +188,34 @@ func (r *SupabasePOIsRepository) BulkCreate(ctx context.Context, pois []model.PO
 	}
 
 	return nil
+}
+
+// FindNearbyByCategories ルート提案用のメソッド：カテゴリと位置に基づいてPOIを検索
+func (r *SupabasePOIsRepository) FindNearbyByCategories(ctx context.Context, location model.LatLng, categories []string, radiusMeters int, limit int) ([]*model.POI, error) {
+	var pois []model.POI
+	data, count, err := r.client.GetClient().From("pois").
+		Select("*", "exact", false).
+		In("category", categories).
+		Limit(limit, "").
+		Execute()
+
+	if err != nil {
+		return nil, fmt.Errorf("周辺カテゴリ別POIデータの取得失敗: %w", err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &pois); err != nil {
+		return nil, fmt.Errorf("POIデータのJSONアンマーシャル失敗: %w", err)
+	}
+
+	// ポインタスライスに変換
+	var result []*model.POI
+	for i := range pois {
+		result = append(result, &pois[i])
+	}
+
+	// TODO: 実際にはPostGISのST_DWithin関数を使用して位置による絞り込みを行う
+	// 現在は簡易的な実装（位置フィルタリングなし）
+
+	return result, nil
 }
