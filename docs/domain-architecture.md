@@ -71,8 +71,8 @@ type StrategyInterface interface {
 package strategy
 
 import (
-	"your_project/internal/domain/model"
-	"your_project/internal/domain/service/helper" // ヘルパー関数を別パッケージにした場合
+	"Team8-App/internal/domain/model"
+	"Team8-App/internal/domain/helper" // ヘルパー関数を使用
 )
 
 // GourmetStrategy はカフェやベーカリーを巡るルートを提案する
@@ -111,15 +111,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
-	"sort"
 	"sync"
 	"time"
 
-	"your_project/internal/domain/external"
-	"your_project/internal/domain/model"
-	"your_project/internal/domain/repository"
-	"your_project/internal/domain/strategy"
+	"Team8-App/internal/domain/external"
+	"Team8-App/internal/domain/model"
+	"Team8-App/internal/domain/repository"
+	"Team8-App/internal/domain/strategy"
+	"Team8-App/internal/domain/helper" // ヘルパー関数を使用
 )
 
 // RouteSuggestionService はテーマに応じたルート提案のオーケストレーションを行う
@@ -204,7 +203,7 @@ func (s *routeSuggestionService) optimizeAndBuildRoute(ctx context.Context, name
 	if len(combination) != 3 {
 		return nil, errors.New("組み合わせは3つのスポットである必要があります")
 	}
-	permutations := generatePermutations(combination)
+	permutations := helper.GeneratePermutations(combination)
 
 	var bestRoute *model.SuggestedRoute
 	var bestPermutation []*model.POI
@@ -256,83 +255,11 @@ func mapThemeToCategories(theme string) []string {
 	}
 }
 
-// --- ヘルパー関数群 ---
-// generatePermutations はPOIスライスの全ての順列を生成する
-func generatePermutations(pois []*model.POI) [][]*model.POI {
-	var result [][]*model.POI
-	var helper func([]*model.POI, int)
-	helper = func(arr []*model.POI, n int) {
-		if n == 1 {
-			tmp := make([]*model.POI, len(arr))
-			copy(tmp, arr)
-			result = append(result, tmp)
-		} else {
-			for i := 0; i < n; i++ {
-				helper(arr, n-1)
-				if n%2 == 1 {
-					arr[0], arr[n-1] = arr[n-1], arr[0]
-				} else {
-					arr[i], arr[n-1] = arr[n-1], arr[i]
-				}
-			}
-		}
-	}
-	helper(pois, len(pois))
-	return result
-}
-
 // generateRouteName はテーマとスポット名からルート名を生成する
 func generateRouteName(theme string, comb []*model.POI) string {
 	// 実際のアプリではもっと凝った名前にする
 	return fmt.Sprintf("【%s】%sと%sを巡る旅", theme, comb[0].Name, comb[1].Name)
 }
-
-// (strategyパッケージから移動・または共通ヘルパーパッケージに配置)
-func FilterByCategory(pois []*model.POI, categories []string) []*model.POI {
-	var filtered []*model.POI
-	catSet := make(map[string]struct{})
-	for _, c := range categories {
-		catSet[c] = struct{}{}
-	}
-	for _, p := range pois {
-		if _, ok := catSet[p.Category]; ok {
-			filtered = append(filtered, p)
-		}
-	}
-	return filtered
-}
-
-func FindHighestRated(pois []*model.POI) *model.POI {
-	if len(pois) == 0 {
-		return nil
-	}
-	highest := pois[0]
-	for _, p := range pois {
-		if p.Rating > highest.Rating {
-			highest = p
-		}
-	}
-	return highest
-}
-
-func SortByDistance(origin *model.POI, targets []*model.POI) {
-	sort.Slice(targets, func(i, j int) bool {
-		distI := haversineDistance(origin.Location, targets[i].Location)
-		distJ := haversineDistance(origin.Location, targets[j].Location)
-		return distI < distJ
-	})
-}
-
-func RemovePOI(pois []*model.POI, target *model.POI) []*model.POI {
-	var result []*model.POI
-	for _, p := range pois {
-		if p.ID != target.ID {
-			result = append(result, p)
-		}
-	}
-	return result
-}
-
 ```
 
 #### `internal/infrastructure/maps/` - Google Map API との接続
@@ -449,6 +376,10 @@ type overviewPolyline struct {
 }
 ```
 
+#### `internal/domain/helper/` - ヘルパー関数群
+
+POI処理に関する汎用的なヘルパー関数を一箇所に集約します。
+
 ```go
 // internal/domain/helper/poi_helper.go
 package helper
@@ -456,7 +387,7 @@ package helper
 import (
     "math"
     "sort"
-    "your_project/internal/domain/model"
+    "Team8-App/internal/domain/model"
 )
 
 const earthRadiusKm = 6371.0
@@ -473,26 +404,77 @@ func HaversineDistance(p1, p2 model.LatLng) float64 {
 
 // FilterByCategory は指定されたカテゴリのPOIのみを抽出する
 func FilterByCategory(pois []*model.POI, categories []string) []*model.POI {
-    // ... (実装は変更なし)
+    var filtered []*model.POI
+    catSet := make(map[string]struct{})
+    for _, c := range categories {
+        catSet[c] = struct{}{}
+    }
+    for _, p := range pois {
+        for _, cat := range p.Categories {
+            if _, ok := catSet[cat]; ok {
+                filtered = append(filtered, p)
+                break
+            }
+        }
+    }
+    return filtered
 }
 
 // FindHighestRated は最も評価の高いPOIを見つける
 func FindHighestRated(pois []*model.POI) *model.POI {
-    // ... (実装は変更なし)
+    if len(pois) == 0 {
+        return nil
+    }
+    highest := pois[0]
+    for _, p := range pois {
+        if p.Rating > highest.Rating {
+            highest = p
+        }
+    }
+    return highest
 }
 
 // SortByDistance は基準地点からの距離でPOIスライスをソートする
 func SortByDistance(origin *model.POI, targets []*model.POI) {
-    // ... (実装は変更なし)
+    sort.Slice(targets, func(i, j int) bool {
+        distI := HaversineDistance(origin.Location, targets[i].Location)
+        distJ := HaversineDistance(origin.Location, targets[j].Location)
+        return distI < distJ
+    })
 }
 
 // RemovePOI はスライスから特定のPOIを削除する
 func RemovePOI(pois []*model.POI, target *model.POI) []*model.POI {
-    // ... (実装は変更なし)
+    var result []*model.POI
+    for _, p := range pois {
+        if p.ID != target.ID {
+            result = append(result, p)
+        }
+    }
+    return result
 }
 
 // GeneratePermutations はPOIスライスの全ての順列を生成する
 func GeneratePermutations(pois []*model.POI) [][]*model.POI {
-    // ... (実装は変更なし)
+    var result [][]*model.POI
+    var helper func([]*model.POI, int)
+    helper = func(arr []*model.POI, n int) {
+        if n == 1 {
+            tmp := make([]*model.POI, len(arr))
+            copy(tmp, arr)
+            result = append(result, tmp)
+        } else {
+            for i := 0; i < n; i++ {
+                helper(arr, n-1)
+                if n%2 == 1 {
+                    arr[0], arr[n-1] = arr[n-1], arr[0]
+                } else {
+                    arr[i], arr[n-1] = arr[n-1], arr[i]
+                }
+            }
+        }
+    }
+    helper(pois, len(pois))
+    return result
 }
 ```
