@@ -18,33 +18,11 @@ type SuggestedRoute struct {
 	Polyline      string    // 地図に描画するためのエンコードされた経路情報
 }
 
-// RouteDetails はDirectionsProviderから返される生のルート情報
+// RouteDetails はGoogle Maps APIから返される生のルート情報
 // SuggestedRouteを構築するために使われる
 type RouteDetails struct {
 	TotalDuration time.Duration
 	Polyline      string
-}
-```
-
------
-
-#### `internal/domain/external/` - 外部サービス契約
-
-外部の経路検索サービスとの「契約（インターフェース）」を定義します。
-
-```go
-// internal/domain/external/directions_provider.go
-package external
-
-import (
-	"context"
-	"your_project/internal/domain/model"
-)
-
-// DirectionsProvider は経路検索サービスとの契約を定義するインターフェース
-type DirectionsProvider interface {
-	// GetWalkingRoute は指定した地点間の徒歩ルート情報を取得する
-	GetWalkingRoute(ctx context.Context, origin model.LatLng, waypoints ...model.LatLng) (*model.RouteDetails, error)
 }
 ```
 
@@ -114,11 +92,11 @@ import (
 	"sync"
 	"time"
 
-	"Team8-App/internal/domain/external"
 	"Team8-App/internal/domain/model"
 	"Team8-App/internal/domain/repository"
 	"Team8-App/internal/domain/strategy"
 	"Team8-App/internal/domain/helper" // ヘルパー関数を使用
+	"Team8-App/internal/infrastructure/maps" // Google Maps実装を直接使用
 )
 
 // RouteSuggestionService はテーマに応じたルート提案のオーケストレーションを行う
@@ -127,12 +105,12 @@ type RouteSuggestionService interface {
 }
 
 type routeSuggestionService struct {
-	directionsProvider external.DirectionsProvider
+	directionsProvider *maps.GoogleDirectionsProvider
 	strategies         map[string]strategy.StrategyInterface
-	poiRepo            repository.POIRepository
+	poiRepo            repository.POIsRepository
 }
 
-func NewRouteSuggestionService(dp external.DirectionsProvider, repo repository.POIRepository) RouteSuggestionService {
+func NewRouteSuggestionService(dp *maps.GoogleDirectionsProvider, repo repository.POIsRepository) RouteSuggestionService {
 	return &routeSuggestionService{
 		directionsProvider: dp,
 		poiRepo:            repo,
@@ -262,31 +240,30 @@ func generateRouteName(theme string, comb []*model.POI) string {
 }
 ```
 
-#### `internal/infrastructure/maps/` - Google Map API との接続
+#### `internal/infrastructure/maps/` - Google Maps API の実装
 
-ルート提案の取得
-
+Google Maps Directions APIを使用した経路検索の具体的な実装です。
 
 ```go
 // internal/infrastructure/maps/google_directions_provider.go
 package maps
 
-// googleDirectionsProvider はDirectionsProviderインターフェースのGoogle Maps実装
-type googleDirectionsProvider struct {
+// GoogleDirectionsProvider はGoogle Maps Directions APIを使用した経路検索の実装
+type GoogleDirectionsProvider struct {
 	apiKey     string
 	httpClient *http.Client
 }
 
 // NewGoogleDirectionsProvider は新しいプロバイダを生成する
-func NewGoogleDirectionsProvider(apiKey string) external.DirectionsProvider {
-	return &googleDirectionsProvider{
+func NewGoogleDirectionsProvider(apiKey string) *GoogleDirectionsProvider {
+	return &GoogleDirectionsProvider{
 		apiKey:     apiKey,
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
 // GetWalkingRoute はGoogle Maps Directions APIを呼び出して徒歩ルート情報を取得する
-func (g *googleDirectionsProvider) GetWalkingRoute(ctx context.Context, origin model.LatLng, waypoints ...model.LatLng) (*model.RouteDetails, error) {
+func (g *GoogleDirectionsProvider) GetWalkingRoute(ctx context.Context, origin model.LatLng, waypoints ...model.LatLng) (*model.RouteDetails, error) {
 	// 1. APIリクエストURLを構築
 	reqURL, err := g.buildURL(origin, waypoints...)
 	if err != nil {
@@ -332,7 +309,17 @@ func (g *googleDirectionsProvider) GetWalkingRoute(ctx context.Context, origin m
 	}, nil
 }
 
-func (g *googleDirectionsProvider) buildURL(origin model.LatLng, waypoints ...model.LatLng) (string, error) {
+// GetWalkingRouteFromPOIs はPOIから位置情報を取得して徒歩ルート情報を取得する便利メソッド
+func (g *GoogleDirectionsProvider) GetWalkingRouteFromPOIs(ctx context.Context, origin *model.POI, waypoints ...*model.POI) (*model.RouteDetails, error) {
+	originLatLng := origin.ToLatLng()
+	waypointLatLngs := make([]model.LatLng, len(waypoints))
+	for i, wp := range waypoints {
+		waypointLatLngs[i] = wp.ToLatLng()
+	}
+	return g.GetWalkingRoute(ctx, originLatLng, waypointLatLngs...)
+}
+
+func (g *GoogleDirectionsProvider) buildURL(origin model.LatLng, waypoints ...model.LatLng) (string, error) {
 	baseURL := "https://maps.googleapis.com/maps/api/directions/json"
 	params := url.Values{}
 	params.Set("origin", fmt.Sprintf("%f,%f", origin.Lat, origin.Lng))
@@ -378,7 +365,7 @@ type overviewPolyline struct {
 
 #### `internal/domain/helper/` - ヘルパー関数群
 
-POI処理に関する汎用的なヘルパー関数を一箇所に集約します。
+POI 処理に関する汎用的なヘルパー関数を一箇所に集約します。
 
 ```go
 // internal/domain/helper/poi_helper.go
