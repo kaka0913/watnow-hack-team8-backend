@@ -91,11 +91,17 @@ func (s *NatureStrategy) findParkTourCombinations(ctx context.Context, userLocat
 	// 組み合わせを生成
 	var combinations [][]*model.POI
 	if cafe != nil && finalSpot != nil {
-		combinations = append(combinations, []*model.POI{mainPark, cafe, finalSpot})
+		combination := []*model.POI{mainPark, cafe, finalSpot}
+		if s.poiSearchHelper.ValidateCombination(combination, 0, false) {
+			combinations = append(combinations, combination)
+		}
 	} else if finalSpot != nil {
 		// カフェが見つからない場合は公園のみでルート生成
 		if len(filteredNature) >= 2 {
-			combinations = append(combinations, []*model.POI{mainPark, filteredNature[0], filteredNature[1]})
+			combination := []*model.POI{mainPark, filteredNature[0], filteredNature[1]}
+			if s.poiSearchHelper.ValidateCombination(combination, 0, false) {
+				combinations = append(combinations, combination)
+			}
 		}
 	}
 
@@ -158,10 +164,30 @@ func (s *NatureStrategy) findRiversideCombinations(ctx context.Context, userLoca
 	// 組み合わせを生成
 	var combinations [][]*model.POI
 	if cafe != nil && river != nil && park != nil {
-		combinations = append(combinations, []*model.POI{cafe, river, park})
-	} else if river != nil && park != nil {
-		// カフェが見つからない場合は河川敷と公園のみ
-		combinations = append(combinations, []*model.POI{river, park, river}) // 河川敷を往復
+		combination := []*model.POI{cafe, river, park}
+		// 重複POIチェック
+		if !s.poiSearchHelper.ValidateCombination(combination, 0, false) {
+			// 重複がある場合はスキップ
+		} else {
+			combinations = append(combinations, combination)
+		}
+	}
+	
+	// カフェが見つからない場合は河川敷と公園のみでルート生成
+	if len(combinations) == 0 && river != nil && park != nil {
+		// 河川敷と公園の組み合わせを作成（河川敷の重複を避ける）
+		// 代替案：異なる公園を2つ選択
+		allParks, err := s.poiRepo.FindNearbyByCategories(ctx, riverLocation, []string{"公園"}, 1200, 10)
+		if err == nil && len(allParks) >= 2 {
+			park1 := allParks[0]
+			park2 := allParks[1]
+			combination := []*model.POI{river, park1, park2}
+			if !s.poiSearchHelper.ValidateCombination(combination, 0, false) {
+				// 重複がある場合はスキップ
+			} else {
+				combinations = append(combinations, combination)
+			}
+		}
 	}
 
 	if len(combinations) == 0 {
@@ -239,13 +265,22 @@ func (s *NatureStrategy) findTempleNatureCombinations(ctx context.Context, userL
 	// 組み合わせを生成
 	var combinations [][]*model.POI
 	if openPark != nil && store != nil {
-		combinations = append(combinations, []*model.POI{templeGarden, openPark, store})
+		combination := []*model.POI{templeGarden, openPark, store}
+		if s.poiSearchHelper.ValidateCombination(combination, 0, false) {
+			combinations = append(combinations, combination)
+		}
 	} else if openPark != nil {
 		// 店舗が見つからない場合は寺社と公園のみ
-		combinations = append(combinations, []*model.POI{templeGarden, openPark})
+		combination := []*model.POI{templeGarden, openPark}
+		if s.poiSearchHelper.ValidateCombination(combination, 0, false) {
+			combinations = append(combinations, combination)
+		}
 	} else if store != nil {
 		// 公園が見つからない場合は寺社と店舗のみ
-		combinations = append(combinations, []*model.POI{templeGarden, store})
+		combination := []*model.POI{templeGarden, store}
+		if s.poiSearchHelper.ValidateCombination(combination, 0, false) {
+			combinations = append(combinations, combination)
+		}
 	}
 
 	if len(combinations) == 0 {
@@ -298,7 +333,10 @@ func (s *NatureStrategy) findParkTourWithDestination(ctx context.Context, userLo
 
 	var combinations [][]*model.POI
 	if park1 != nil && park2 != nil {
-		combinations = append(combinations, []*model.POI{park1, park2, destinationPOI})
+		combination := []*model.POI{park1, park2, destinationPOI}
+		if s.poiSearchHelper.ValidateCombination(combination, 0, false) {
+			combinations = append(combinations, combination)
+		}
 	}
 
 	return combinations, nil
@@ -336,7 +374,11 @@ func (s *NatureStrategy) findRiversideWithDestination(ctx context.Context, userL
 
 	var combinations [][]*model.POI
 	if river != nil && park != nil {
-		combinations = append(combinations, []*model.POI{river, park, destinationPOI})
+		combination := []*model.POI{river, park, destinationPOI}
+		// 重複POIチェック
+		if s.poiSearchHelper.ValidateCombination(combination, 0, false) {
+			combinations = append(combinations, combination)
+		}
 	}
 
 	return combinations, nil
@@ -374,7 +416,10 @@ func (s *NatureStrategy) findTempleNatureWithDestination(ctx context.Context, us
 
 	var combinations [][]*model.POI
 	if temple != nil && park != nil {
-		combinations = append(combinations, []*model.POI{temple, park, destinationPOI})
+		combination := []*model.POI{temple, park, destinationPOI}
+		if s.poiSearchHelper.ValidateCombination(combination, 0, false) {
+			combinations = append(combinations, combination)
+		}
 	}
 
 	return combinations, nil

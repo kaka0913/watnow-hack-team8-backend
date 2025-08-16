@@ -205,6 +205,13 @@ func (s *routeSuggestionService) optimizeRoute(ctx context.Context, name string,
 		if err != nil {
 			continue
 		}
+
+		// 所要時間制限チェック（1時間30分以内）
+		maxDuration := 90 * time.Minute
+		if routeDetails.TotalDuration > maxDuration {
+			continue
+		}
+
 		if routeDetails.TotalDuration < shortestDuration {
 			shortestDuration = routeDetails.TotalDuration
 			bestRoute = &model.SuggestedRoute{
@@ -217,7 +224,7 @@ func (s *routeSuggestionService) optimizeRoute(ctx context.Context, name string,
 	}
 
 	if bestRoute == nil {
-		return nil, errors.New("どの順列でもルート計算に失敗しました")
+		return nil, errors.New("制限時間内でルート計算に成功した順列がありませんでした")
 	}
 	return bestRoute, nil
 }
@@ -244,6 +251,13 @@ func (s *routeSuggestionService) optimizeRouteWithDestination(ctx context.Contex
 		if err != nil {
 			continue
 		}
+
+		// 所要時間制限チェック（1時間30分以内）
+		maxDuration := 90 * time.Minute
+		if routeDetails.TotalDuration > maxDuration {
+			continue
+		}
+
 		if routeDetails.TotalDuration < shortestDuration {
 			shortestDuration = routeDetails.TotalDuration
 			bestRoute = &model.SuggestedRoute{
@@ -256,7 +270,7 @@ func (s *routeSuggestionService) optimizeRouteWithDestination(ctx context.Contex
 	}
 
 	if bestRoute == nil {
-		return nil, errors.New("目的地へのルート計算に失敗しました")
+		return nil, errors.New("制限時間内で目的地へのルート計算に成功した順列がありませんでした")
 	}
 	return bestRoute, nil
 }
