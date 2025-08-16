@@ -2,9 +2,9 @@ package model
 
 // ThemeConstants はアプリケーションで使用するテーマの定数
 const (
-	ThemeGourmet = "gourmet"
-	ThemeNature  = "nature"
-	ThemeHistory = "history"
+	ThemeGourmet           = "gourmet"
+	ThemeNature            = "nature"
+	ThemeHistoryAndCulture = "history_and_culture"
 )
 
 // ScenarioConstants はアプリケーションで使用するシナリオの定数
@@ -44,9 +44,9 @@ var ScenarioNameMap = map[string]string{
 
 // ThemeNameMap はテーマIDから日本語名へのマッピング
 var ThemeNameMap = map[string]string{
-	ThemeGourmet: "グルメ",
-	ThemeNature:  "自然",
-	ThemeHistory: "歴史",
+	ThemeGourmet:           "グルメ",
+	ThemeNature:            "自然",
+	ThemeHistoryAndCulture: "歴史・文化探訪",
 }
 
 // GetScenarioJapaneseName はシナリオIDから日本語名を取得する
@@ -84,8 +84,8 @@ func GetNatureScenarios() []string {
 	}
 }
 
-// GetHistoryScenarios は歴史テーマのシナリオ一覧を取得する
-func GetHistoryScenarios() []string {
+// GetHistoryAndCultureScenarios は歴史・文化探訪テーマのシナリオ一覧を取得する
+func GetHistoryAndCultureScenarios() []string {
 	return []string{
 		ScenarioTempleShrine,
 		ScenarioMuseumTour,
@@ -99,7 +99,7 @@ func GetAllThemes() []string {
 	return []string{
 		ThemeGourmet,
 		ThemeNature,
-		ThemeHistory,
+		ThemeHistoryAndCulture,
 	}
 }
 
@@ -108,6 +108,6 @@ func GetAllScenarios() []string {
 	scenarios := make([]string, 0)
 	scenarios = append(scenarios, GetGourmetScenarios()...)
 	scenarios = append(scenarios, GetNatureScenarios()...)
-	scenarios = append(scenarios, GetHistoryScenarios()...)
+	scenarios = append(scenarios, GetHistoryAndCultureScenarios()...)
 	return scenarios
 }

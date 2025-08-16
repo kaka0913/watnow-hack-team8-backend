@@ -37,9 +37,9 @@ func NewRouteSuggestionService(dp *maps.GoogleDirectionsProvider, repo repositor
 		directionsProvider: dp,
 		poiRepo:            repo,
 		strategies: map[string]strategy.StrategyInterface{
-			model.ThemeGourmet: strategy.NewGourmetStrategy(),
-			model.ThemeNature:  strategy.NewNatureStrategy(),
-			model.ThemeHistory: strategy.NewHistoryStrategy(),
+			model.ThemeGourmet:           strategy.NewGourmetStrategy(),
+			model.ThemeNature:            strategy.NewNatureStrategy(),
+			model.ThemeHistoryAndCulture: strategy.NewHistoryAndCultureStrategy(),
 		},
 		routeBuilderHelper: NewRouteBuilderHelper(),
 		poiSearchHelper:    NewPOISearchHelper(repo),
@@ -81,6 +81,7 @@ func (s *routeSuggestionService) GetAvailableScenariosForTheme(theme string) ([]
 
 	return selectedStrategy.GetAvailableScenarios(), nil
 }
+
 // SuggestRoutesForMultipleScenarios は複数のシナリオから並行でルートを生成する
 func (s *routeSuggestionService) suggestRoutesForMultipleScenarios(ctx context.Context, theme string, scenarios []string, userLocation model.LatLng) ([]*model.SuggestedRoute, error) {
 	if len(scenarios) == 0 {
