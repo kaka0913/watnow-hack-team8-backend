@@ -40,6 +40,7 @@ func NewRouteSuggestionService(dp *maps.GoogleDirectionsProvider, repo repositor
 			model.ThemeGourmet:           strategy.NewGourmetStrategy(),
 			model.ThemeNature:            strategy.NewNatureStrategy(),
 			model.ThemeHistoryAndCulture: strategy.NewHistoryAndCultureStrategy(),
+			model.ThemeHorror:            strategy.NewHorrorStrategy(),
 		},
 		routeBuilderHelper: NewRouteBuilderHelper(),
 		poiSearchHelper:    NewPOISearchHelper(repo),
@@ -154,7 +155,15 @@ func (s *routeSuggestionService) suggestRoutesForScenario(ctx context.Context, t
 		return nil, errors.New("シナリオに該当するカテゴリがありません: " + scenario)
 	}
 
-	candidates, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, targetCategories, 1500, 30)
+	var candidates []*model.POI
+	var err error
+	
+	// ホラーテーマの場合はhorror_spotを含む、それ以外はデフォルト（horror_spot除外）
+	if theme == model.ThemeHorror {
+		candidates, err = s.poiRepo.FindNearbyByCategoriesIncludingHorror(ctx, userLocation, targetCategories, 1500, 30)
+	} else {
+		candidates, err = s.poiRepo.FindNearbyByCategories(ctx, userLocation, targetCategories, 1500, 30)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("POI候補の取得に失敗しました: %w", err)
 	}
@@ -261,7 +270,14 @@ func (s *routeSuggestionService) suggestRoutesWithDestination(ctx context.Contex
 		return nil, errors.New("シナリオに該当するカテゴリがありません: " + scenario)
 	}
 
-	candidates, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, targetCategories, 1500, 30)
+	var candidates []*model.POI
+	
+	// ホラーテーマの場合はhorror_spotを含む、それ以外はデフォルト（horror_spot除外）
+	if theme == model.ThemeHorror {
+		candidates, err = s.poiRepo.FindNearbyByCategoriesIncludingHorror(ctx, userLocation, targetCategories, 1500, 30)
+	} else {
+		candidates, err = s.poiRepo.FindNearbyByCategories(ctx, userLocation, targetCategories, 1500, 30)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("POI候補の取得に失敗しました: %w", err)
 	}

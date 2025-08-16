@@ -190,8 +190,39 @@ func (r *SupabasePOIsRepository) BulkCreate(ctx context.Context, pois []model.PO
 	return nil
 }
 
-// FindNearbyByCategories ルート提案用のメソッド：カテゴリと位置に基づいてPOIを検索
+// FindNearbyByCategories ルート提案用のメソッド：カテゴリと位置に基づいてPOIを検索（horror_spotは除外）
 func (r *SupabasePOIsRepository) FindNearbyByCategories(ctx context.Context, location model.LatLng, categories []string, radiusMeters int, limit int) ([]*model.POI, error) {
+	var pois []model.POI
+	data, count, err := r.client.GetClient().From("pois").
+		Select("*", "exact", false).
+		In("category", categories).
+		Neq("category", "horror_spot"). // horror_spotカテゴリを除外
+		Limit(limit, "").
+		Execute()
+
+	if err != nil {
+		return nil, fmt.Errorf("周辺カテゴリ別POIデータの取得失敗: %w", err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &pois); err != nil {
+		return nil, fmt.Errorf("POIデータのJSONアンマーシャル失敗: %w", err)
+	}
+
+	// ポインタスライスに変換
+	var result []*model.POI
+	for i := range pois {
+		result = append(result, &pois[i])
+	}
+
+	// TODO: 実際にはPostGISのST_DWithin関数を使用して位置による絞り込みを行う
+	// 現在は簡易的な実装（位置フィルタリングなし）
+
+	return result, nil
+}
+
+// FindNearbyByCategoriesIncludingHorror ホラースポットを含めてPOIをカテゴリと位置に基づいて検索
+func (r *SupabasePOIsRepository) FindNearbyByCategoriesIncludingHorror(ctx context.Context, location model.LatLng, categories []string, radiusMeters int, limit int) ([]*model.POI, error) {
 	var pois []model.POI
 	data, count, err := r.client.GetClient().From("pois").
 		Select("*", "exact", false).
@@ -200,7 +231,7 @@ func (r *SupabasePOIsRepository) FindNearbyByCategories(ctx context.Context, loc
 		Execute()
 
 	if err != nil {
-		return nil, fmt.Errorf("周辺カテゴリ別POIデータの取得失敗: %w", err)
+		return nil, fmt.Errorf("周辺カテゴリ別POIデータ（ホラースポット含む）の取得失敗: %w", err)
 	}
 	_ = count
 
