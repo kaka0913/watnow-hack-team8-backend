@@ -67,6 +67,15 @@ func SortByDistance(origin *model.POI, targets []*model.POI) {
 	})
 }
 
+// SortByDistanceFromLocation は基準座標からの距離でPOIスライスをソートする
+func SortByDistanceFromLocation(origin model.LatLng, targets []*model.POI) {
+	sort.Slice(targets, func(i, j int) bool {
+		distI := HaversineDistance(origin, targets[i].ToLatLng())
+		distJ := HaversineDistance(origin, targets[j].ToLatLng())
+		return distI < distJ
+	})
+}
+
 // RemovePOI はスライスから特定のPOIを削除する
 func RemovePOI(pois []*model.POI, target *model.POI) []*model.POI {
 	var result []*model.POI
