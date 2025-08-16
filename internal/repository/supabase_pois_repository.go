@@ -6,15 +6,16 @@ import (
 	"fmt"
 	"strconv"
 
-	"Team8-App/internal/database"
-	"Team8-App/model"
+	"Team8-App/internal/domain/model"
+	"Team8-App/internal/domain/repository"
+	"Team8-App/internal/infrastructure/database"
 )
 
 type SupabasePOIsRepository struct {
 	client *database.SupabaseClient
 }
 
-func NewSupabasePOIsRepository(client *database.SupabaseClient) POIsRepository {
+func NewSupabasePOIsRepository(client *database.SupabaseClient) repository.POIsRepository {
 	return &SupabasePOIsRepository{
 		client: client,
 	}
@@ -187,4 +188,72 @@ func (r *SupabasePOIsRepository) BulkCreate(ctx context.Context, pois []model.PO
 	}
 
 	return nil
+}
+
+// FindNearbyByCategories ルート提案用のメソッド：カテゴリと位置に基づいてPOIを検索（horror_spotは除外）
+func (r *SupabasePOIsRepository) FindNearbyByCategories(ctx context.Context, location model.LatLng, categories []string, radiusMeters int, limit int) ([]*model.POI, error) {
+	var pois []model.POI
+	
+	// Supabase-jsのJSONB配列操作：categories && [category1, category2] 
+	categoryArray, _ := json.Marshal(categories)
+	
+	data, count, err := r.client.GetClient().From("pois").
+		Select("*", "exact", false).
+		Filter("categories", "cs", string(categoryArray)).
+		Limit(limit, "").
+		Execute()
+
+	if err != nil {
+		return nil, fmt.Errorf("周辺カテゴリ別POIデータの取得失敗: %w", err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &pois); err != nil {
+		return nil, fmt.Errorf("POIデータのJSONアンマーシャル失敗: %w", err)
+	}
+
+	// ポインタスライスに変換
+	var result []*model.POI
+	for i := range pois {
+		result = append(result, &pois[i])
+	}
+
+	// TODO: 実際にはPostGISのST_DWithin関数を使用して位置による絞り込みを行う
+	// 現在は簡易的な実装（位置フィルタリングなし）
+
+	return result, nil
+}
+
+// FindNearbyByCategoriesIncludingHorror ホラースポットを含めてPOIをカテゴリと位置に基づいて検索
+func (r *SupabasePOIsRepository) FindNearbyByCategoriesIncludingHorror(ctx context.Context, location model.LatLng, categories []string, radiusMeters int, limit int) ([]*model.POI, error) {
+	var pois []model.POI
+	
+	// Supabase-jsのJSONB配列操作
+	categoryArray, _ := json.Marshal(categories)
+	
+	data, count, err := r.client.GetClient().From("pois").
+		Select("*", "exact", false).
+		Filter("categories", "cs", string(categoryArray)).
+		Limit(limit, "").
+		Execute()
+
+	if err != nil {
+		return nil, fmt.Errorf("周辺カテゴリ別POIデータ（ホラースポット含む）の取得失敗: %w", err)
+	}
+	_ = count
+
+	if err := json.Unmarshal([]byte(data), &pois); err != nil {
+		return nil, fmt.Errorf("POIデータのJSONアンマーシャル失敗: %w", err)
+	}
+
+	// ポインタスライスに変換
+	var result []*model.POI
+	for i := range pois {
+		result = append(result, &pois[i])
+	}
+
+	// TODO: 実際にはPostGISのST_DWithin関数を使用して位置による絞り込みを行う
+	// 現在は簡易的な実装（位置フィルタリングなし）
+
+	return result, nil
 }

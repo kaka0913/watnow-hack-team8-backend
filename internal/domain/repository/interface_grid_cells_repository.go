@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"Team8-App/model"
+	"Team8-App/internal/domain/model"
 )
 
 type GridCellsRepository interface {

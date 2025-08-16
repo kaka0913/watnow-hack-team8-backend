@@ -1,5 +1,19 @@
 package model
 
+import "time"
+
+type SuggestedRoute struct {
+	Name          string
+	Spots         []*POI
+	TotalDuration time.Duration
+	Polyline      string
+}
+
+type RouteDetails struct {
+	TotalDuration time.Duration
+	Polyline      string
+}
+
 type RouteProposalRequest struct {
 	StartLocation       *Location        `json:"start_location" validate:"required"`
 	DestinationLocation *Location        `json:"destination_location"` // null可（お散歩モード）

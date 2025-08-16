@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"Team8-App/model"
+	"Team8-App/internal/domain/model"
 )
 
 type POIsRepository interface {
@@ -17,4 +17,7 @@ type POIsRepository interface {
 	Update(ctx context.Context, poi *model.POI) error
 	Delete(ctx context.Context, id string) error
 	BulkCreate(ctx context.Context, pois []model.POI) error
+	FindNearbyByCategories(ctx context.Context, location model.LatLng, categories []string, radiusMeters int, limit int) ([]*model.POI, error)
+	// ホラースポットを含めてPOIをカテゴリと位置に基づいて検索
+	FindNearbyByCategoriesIncludingHorror(ctx context.Context, location model.LatLng, categories []string, radiusMeters int, limit int) ([]*model.POI, error)
 }

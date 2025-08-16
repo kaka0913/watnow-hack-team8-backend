@@ -3,7 +3,7 @@ package repository
 import (
 	"github.com/paulmach/orb"
 
-	"Team8-App/model"
+	"Team8-App/internal/domain/model"
 )
 
 // GeoPoint PostGIS POINT 型の JSON 表現

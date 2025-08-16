@@ -6,6 +6,8 @@
 # バイナリファイル
 bin/
 *.exe
+/main
+*.out
 
 # OS固有のファイル
 .DS_Store
