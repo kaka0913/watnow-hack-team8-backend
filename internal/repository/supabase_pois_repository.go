@@ -193,10 +193,13 @@ func (r *SupabasePOIsRepository) BulkCreate(ctx context.Context, pois []model.PO
 // FindNearbyByCategories ルート提案用のメソッド：カテゴリと位置に基づいてPOIを検索（horror_spotは除外）
 func (r *SupabasePOIsRepository) FindNearbyByCategories(ctx context.Context, location model.LatLng, categories []string, radiusMeters int, limit int) ([]*model.POI, error) {
 	var pois []model.POI
+	
+	// Supabase-jsのJSONB配列操作：categories && [category1, category2] 
+	categoryArray, _ := json.Marshal(categories)
+	
 	data, count, err := r.client.GetClient().From("pois").
 		Select("*", "exact", false).
-		In("category", categories).
-		Neq("category", "horror_spot"). // horror_spotカテゴリを除外
+		Filter("categories", "cs", string(categoryArray)).
 		Limit(limit, "").
 		Execute()
 
@@ -224,9 +227,13 @@ func (r *SupabasePOIsRepository) FindNearbyByCategories(ctx context.Context, loc
 // FindNearbyByCategoriesIncludingHorror ホラースポットを含めてPOIをカテゴリと位置に基づいて検索
 func (r *SupabasePOIsRepository) FindNearbyByCategoriesIncludingHorror(ctx context.Context, location model.LatLng, categories []string, radiusMeters int, limit int) ([]*model.POI, error) {
 	var pois []model.POI
+	
+	// Supabase-jsのJSONB配列操作
+	categoryArray, _ := json.Marshal(categories)
+	
 	data, count, err := r.client.GetClient().From("pois").
 		Select("*", "exact", false).
-		In("category", categories).
+		Filter("categories", "cs", string(categoryArray)).
 		Limit(limit, "").
 		Execute()
 
