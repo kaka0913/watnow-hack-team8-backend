@@ -1,4 +1,4 @@
-package service
+package helper
 
 import (
 	"Team8-App/internal/domain/model"

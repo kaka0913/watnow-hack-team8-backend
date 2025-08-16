@@ -7,52 +7,47 @@ import (
 	"Team8-App/internal/infrastructure/maps"
 	"context"
 	"errors"
+	"fmt"
+	"sync"
+	"time"
 )
 
-// RouteSuggestionService はテーマに応じたルート提案のオーケストレーションを行う
-// 3つのPOIサービスと2つのPOI+目的地サービスを統合して提供する
+// RouteSuggestionService はルート提案のオーケストレーションを行う単一のサービス
 type RouteSuggestionService interface {
-	// SuggestRoutes はリクエストの内容に応じて適切なルート提案を行う
-	// 単一のエントリーポイントで全ての条件（テーマ、シナリオ、目的地の有無）を受け付ける
 	SuggestRoutes(ctx context.Context, req *model.SuggestionRequest) ([]*model.SuggestedRoute, error)
-
-	// GetAvailableScenariosForTheme は指定されたテーマで利用可能なシナリオの一覧を取得する
-	// フロントエンドでユーザーがシナリオを選択する際に使用される
 	GetAvailableScenariosForTheme(theme string) ([]string, error)
 }
 
 type routeSuggestionService struct {
-	strategies                      map[string]strategy.StrategyInterface
-	threePOIService                *ThreePOIRouteSuggestionService
-	twoPOIWithDestinationService   *TwoPOIWithDestinationRouteSuggestionService
+	directionsProvider *maps.GoogleDirectionsProvider
+	strategies         map[string]strategy.StrategyInterface
+	poiRepo            repository.POIsRepository
+	routeBuilderHelper *RouteBuilderHelper
 }
 
 func NewRouteSuggestionService(dp *maps.GoogleDirectionsProvider, repo repository.POIsRepository) RouteSuggestionService {
+	// 各Strategyにrepoを注入
 	strategies := map[string]strategy.StrategyInterface{
 		model.ThemeGourmet:           strategy.NewGourmetStrategy(),
 		model.ThemeNature:            strategy.NewNatureStrategy(repo),
 		model.ThemeHistoryAndCulture: strategy.NewHistoryAndCultureStrategy(),
 		model.ThemeHorror:            strategy.NewHorrorStrategy(),
 	}
-	
-	routeBuilderHelper := NewRouteBuilderHelper()
-	
 	return &routeSuggestionService{
-		strategies:                     strategies,
-		threePOIService:               NewThreePOIRouteSuggestionService(dp, strategies, routeBuilderHelper),
-		twoPOIWithDestinationService:  NewTwoPOIWithDestinationRouteSuggestionService(dp, strategies, routeBuilderHelper),
+		directionsProvider: dp,
+		strategies:         strategies,
+		poiRepo:            repo,
+		routeBuilderHelper: NewRouteBuilderHelper(),
 	}
 }
 
-// SuggestRoutes はリクエストの内容に応じて適切な処理を呼び出すディスパッチャの役割を担う
+// SuggestRoutes はリクエストに応じて処理を振り分ける単一のエントリーポイント
 func (s *routeSuggestionService) SuggestRoutes(ctx context.Context, req *model.SuggestionRequest) ([]*model.SuggestedRoute, error) {
-	// Step 1: 戦略を選択
 	selectedStrategy, ok := s.strategies[req.Theme]
 	if !ok {
 		return nil, errors.New("対応していないテーマです: " + req.Theme)
 	}
 
-	// Step 2: シナリオを決定
 	scenariosToRun := req.GetScenarios()
 	if !req.HasSpecificScenarios() {
 		scenariosToRun = selectedStrategy.GetAvailableScenarios()
@@ -61,14 +56,21 @@ func (s *routeSuggestionService) SuggestRoutes(ctx context.Context, req *model.S
 		return nil, errors.New("利用可能なシナリオがありません")
 	}
 
-	// Step 3: 目的地の有無で処理を振り分け
+	// 目的地の有無に応じて、「組み合わせ取得」と「ルート最適化」のロジックを定義
+	var combinationFinder combinationFinderFunc
+	var routeOptimizer routeOptimizerFunc
+
 	if req.HasDestination() {
-		// 2つのPOI+目的地サービスを使用
-		return s.twoPOIWithDestinationService.SuggestRoutesForMultipleScenariosWithDestination(ctx, req.Theme, scenariosToRun, req.UserLocation, *req.Destination)
+		combinationFinder = func(ctx context.Context, scenario string, userLocation model.LatLng) ([][]*model.POI, error) {
+			return selectedStrategy.FindCombinationsWithDestination(ctx, scenario, userLocation, *req.Destination)
+		}
+		routeOptimizer = s.optimizeRouteWithDestination
 	} else {
-		// 3つのPOIサービスを使用
-		return s.threePOIService.SuggestRoutesForMultipleScenarios(ctx, req.Theme, scenariosToRun, req.UserLocation)
+		combinationFinder = selectedStrategy.FindCombinations
+		routeOptimizer = s.optimizeRoute
 	}
+
+	return s.executeScenariosInParallel(ctx, req.Theme, scenariosToRun, req.UserLocation, combinationFinder, routeOptimizer)
 }
 
 func (s *routeSuggestionService) GetAvailableScenariosForTheme(theme string) ([]string, error) {
@@ -80,9 +82,181 @@ func (s *routeSuggestionService) GetAvailableScenariosForTheme(theme string) ([]
 	return selectedStrategy.GetAvailableScenarios(), nil
 }
 
-// scenarioResult は並行処理用のチャネルとWaitGroupで使用される結果構造体
+// 振る舞いを定義する関数型
+type combinationFinderFunc func(ctx context.Context, scenario string, userLocation model.LatLng) ([][]*model.POI, error)
+type routeOptimizerFunc func(ctx context.Context, name string, userLocation model.LatLng, combination []*model.POI) (*model.SuggestedRoute, error)
+
+// scenarioResult は並行処理の結果を格納する
 type scenarioResult struct {
-	scenario string
-	routes   []*model.SuggestedRoute
-	err      error
+	routes []*model.SuggestedRoute
+	err    error
+}
+
+// executeScenariosInParallel は並行処理の骨格を担う共通ヘルパー
+func (s *routeSuggestionService) executeScenariosInParallel(
+	ctx context.Context,
+	theme string,
+	scenarios []string,
+	userLocation model.LatLng,
+	findCombinations combinationFinderFunc, // 組み合わせ取得ロジックを引数で受け取る
+	optimizeRoute routeOptimizerFunc, // ルート最適化ロジックを引数で受け取る
+) ([]*model.SuggestedRoute, error) {
+
+	resultsChan := make(chan scenarioResult, len(scenarios))
+	var wg sync.WaitGroup
+
+	for _, scenario := range scenarios {
+		wg.Add(1)
+		go func(sc string) {
+			defer wg.Done()
+			// 1. 組み合わせを取得
+			combinations, err := findCombinations(ctx, sc, userLocation)
+			if err != nil {
+				resultsChan <- scenarioResult{err: fmt.Errorf("シナリオ '%s': %w", sc, err)}
+				return
+			}
+			if len(combinations) == 0 {
+				// エラーではないがルートがない場合
+				resultsChan <- scenarioResult{}
+				return
+			}
+			// 2. 組み合わせからルートを並行構築
+			routes := s.buildRoutesFromCombinations(ctx, theme, sc, userLocation, combinations, optimizeRoute)
+			resultsChan <- scenarioResult{routes: routes}
+		}(scenario)
+	}
+
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	// 結果収集ロジック
+	var allRoutes []*model.SuggestedRoute
+	var errorMessages []string
+	for result := range resultsChan {
+		if result.err != nil {
+			errorMessages = append(errorMessages, result.err.Error())
+		} else {
+			allRoutes = append(allRoutes, result.routes...)
+		}
+	}
+
+	// すべてのシナリオでエラーが発生した場合
+	if len(allRoutes) == 0 {
+		if len(errorMessages) > 0 {
+			return nil, fmt.Errorf("すべてのシナリオでエラーが発生しました: %v", errorMessages)
+		}
+		return nil, errors.New("指定されたシナリオからルートを生成できませんでした")
+	}
+
+	return allRoutes, nil
+}
+
+// buildRoutesFromCombinations はルート構築の並行処理を行う
+func (s *routeSuggestionService) buildRoutesFromCombinations(
+	ctx context.Context,
+	theme, scenario string,
+	userLocation model.LatLng,
+	combinations [][]*model.POI,
+	optimizeRoute routeOptimizerFunc, // 最適化関数を引数で受け取る
+) []*model.SuggestedRoute {
+	var suggestedRoutes []*model.SuggestedRoute
+	var mu sync.Mutex
+	var wg sync.WaitGroup
+
+	for i, comb := range combinations {
+		wg.Add(1)
+		go func(index int, combination []*model.POI) {
+			defer wg.Done()
+			routeName := s.routeBuilderHelper.GenerateRouteName(theme, scenario, combination, index)
+			// 渡された最適化関数を実行
+			route, err := optimizeRoute(ctx, routeName, userLocation, combination)
+			if err == nil {
+				mu.Lock()
+				suggestedRoutes = append(suggestedRoutes, route)
+				mu.Unlock()
+			}
+		}(i, comb)
+	}
+	wg.Wait()
+	return suggestedRoutes
+}
+
+//------------------------------------------------------------------------------
+// ### 2つのルート最適化ロジック
+//------------------------------------------------------------------------------
+
+// optimizeRoute は目的地なしのルートを最適化する
+func (s *routeSuggestionService) optimizeRoute(ctx context.Context, name string, userLocation model.LatLng, combination []*model.POI) (*model.SuggestedRoute, error) {
+	if len(combination) != 3 {
+		return nil, errors.New("組み合わせは3つのスポットである必要があります")
+	}
+	permutations := s.routeBuilderHelper.GeneratePermutations(combination)
+	var bestRoute *model.SuggestedRoute
+	var shortestDuration = time.Duration(24 * time.Hour)
+
+	for _, perm := range permutations {
+		waypointLatLngs := make([]model.LatLng, len(perm))
+		for i, poi := range perm {
+			waypointLatLngs[i] = poi.ToLatLng()
+		}
+		routeDetails, err := s.directionsProvider.GetWalkingRoute(ctx, userLocation, waypointLatLngs...)
+		if err != nil {
+			continue
+		}
+		if routeDetails.TotalDuration < shortestDuration {
+			shortestDuration = routeDetails.TotalDuration
+			bestRoute = &model.SuggestedRoute{
+				Name:          fmt.Sprintf("%s (%d分)", name, int(routeDetails.TotalDuration.Minutes())),
+				Spots:         perm,
+				TotalDuration: routeDetails.TotalDuration,
+				Polyline:      routeDetails.Polyline,
+			}
+		}
+	}
+
+	if bestRoute == nil {
+		return nil, errors.New("どの順列でもルート計算に失敗しました")
+	}
+	return bestRoute, nil
+}
+
+// optimizeRouteWithDestination は目的地ありのルートを最適化する
+func (s *routeSuggestionService) optimizeRouteWithDestination(ctx context.Context, name string, userLocation model.LatLng, combination []*model.POI) (*model.SuggestedRoute, error) {
+	if len(combination) != 3 {
+		return nil, errors.New("組み合わせは3つのスポット(経由地2+目的地1)である必要があります")
+	}
+	poi1, poi2, destination := combination[0], combination[1], combination[2]
+	routesToTry := [][]*model.POI{
+		{poi1, poi2, destination},
+		{poi2, poi1, destination},
+	}
+	var bestRoute *model.SuggestedRoute
+	var shortestDuration = time.Duration(24 * time.Hour)
+
+	for _, route := range routesToTry {
+		waypointLatLngs := make([]model.LatLng, len(route))
+		for i, poi := range route {
+			waypointLatLngs[i] = poi.ToLatLng()
+		}
+		routeDetails, err := s.directionsProvider.GetWalkingRoute(ctx, userLocation, waypointLatLngs...)
+		if err != nil {
+			continue
+		}
+		if routeDetails.TotalDuration < shortestDuration {
+			shortestDuration = routeDetails.TotalDuration
+			bestRoute = &model.SuggestedRoute{
+				Name:          fmt.Sprintf("%s (%d分)", name, int(routeDetails.TotalDuration.Minutes())),
+				Spots:         route,
+				TotalDuration: routeDetails.TotalDuration,
+				Polyline:      routeDetails.Polyline,
+			}
+		}
+	}
+
+	if bestRoute == nil {
+		return nil, errors.New("目的地へのルート計算に失敗しました")
+	}
+	return bestRoute, nil
 }

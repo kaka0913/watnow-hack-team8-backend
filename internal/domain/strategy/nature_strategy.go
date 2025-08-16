@@ -4,7 +4,6 @@ import (
 	"Team8-App/internal/domain/helper"
 	"Team8-App/internal/domain/model"
 	"Team8-App/internal/domain/repository"
-	"Team8-App/internal/domain/service"
 	"context"
 	"errors"
 	"fmt"
@@ -14,13 +13,13 @@ import (
 // route-proposal.mdの詳細なロジック仕様に基づいた体験設計を提供
 type NatureStrategy struct {
 	poiRepo         repository.POIsRepository
-	poiSearchHelper *service.POISearchHelper
+	poiSearchHelper *helper.POISearchHelper
 }
 
 func NewNatureStrategy(repo repository.POIsRepository) StrategyInterface {
 	return &NatureStrategy{
 		poiRepo:         repo,
-		poiSearchHelper: service.NewPOISearchHelper(repo),
+		poiSearchHelper: helper.NewPOISearchHelper(repo),
 	}
 }
 
