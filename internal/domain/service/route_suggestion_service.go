@@ -28,10 +28,10 @@ type routeSuggestionService struct {
 func NewRouteSuggestionService(dp *maps.GoogleDirectionsProvider, repo repository.POIsRepository) RouteSuggestionService {
 	// 各Strategyにrepoを注入
 	strategies := map[string]strategy.StrategyInterface{
-		model.ThemeGourmet:           strategy.NewGourmetStrategy(),
+		model.ThemeGourmet:           strategy.NewGourmetStrategy(repo),
 		model.ThemeNature:            strategy.NewNatureStrategy(repo),
-		model.ThemeHistoryAndCulture: strategy.NewHistoryAndCultureStrategy(),
-		model.ThemeHorror:            strategy.NewHorrorStrategy(),
+		model.ThemeHistoryAndCulture: strategy.NewHistoryAndCultureStrategy(repo),
+		model.ThemeHorror:            strategy.NewHorrorStrategy(repo),
 	}
 	return &routeSuggestionService{
 		directionsProvider: dp,

@@ -1,20 +1,75 @@
 package strategy
 
 import (
-	"Team8-App/internal/domain/helper"
 	"Team8-App/internal/domain/model"
+	"Team8-App/internal/domain/repository"
+	"context"
+	"fmt"
 )
 
-// HistoryAndCultureStrategy は歴史・文化探訪スポットを巡るルートを提案する
-type HistoryAndCultureStrategy struct{}
-
-func NewHistoryAndCultureStrategy() StrategyInterface {
-	return &HistoryAndCultureStrategy{}
+// HistoryAndCultureStrategy は歴史・文化を巡るルートを提案する
+type HistoryAndCultureStrategy struct {
+	poiRepo repository.POIsRepository
 }
 
-// GetAvailableScenarios は歴史・文化探訪テーマで利用可能なシナリオ一覧を取得する
+func NewHistoryAndCultureStrategy(repo repository.POIsRepository) StrategyInterface {
+	return &HistoryAndCultureStrategy{
+		poiRepo: repo,
+	}
+}
+
+// GetAvailableScenarios はHistoryAndCultureテーマで利用可能なシナリオ一覧を取得する
 func (s *HistoryAndCultureStrategy) GetAvailableScenarios() []string {
 	return model.GetHistoryAndCultureScenarios()
+}
+
+// FindCombinations は指定されたシナリオでPOI組み合わせを見つける
+func (s *HistoryAndCultureStrategy) FindCombinations(ctx context.Context, scenario string, userLocation model.LatLng) ([][]*model.POI, error) {
+	// NOTE: 一時的な実装 - 将来的にはシナリオごとの詳細ロジックを実装
+	candidates, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, s.GetTargetCategories(scenario), 1500, 10)
+	if err != nil {
+		return nil, fmt.Errorf("POI検索に失敗: %w", err)
+	}
+
+	if len(candidates) < 3 {
+		return nil, fmt.Errorf("十分なPOIが見つかりませんでした")
+	}
+
+	// シンプルな組み合わせを生成
+	combination := []*model.POI{candidates[0], candidates[1], candidates[2]}
+	return [][]*model.POI{combination}, nil
+}
+
+// FindCombinationsWithDestination は目的地を含むルート組み合わせを見つける
+func (s *HistoryAndCultureStrategy) FindCombinationsWithDestination(ctx context.Context, scenario string, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error) {
+	// NOTE: 一時的な実装 - 将来的にはシナリオごとの詳細ロジックを実装
+	candidates, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, s.GetTargetCategories(scenario), 1500, 10)
+	if err != nil {
+		return nil, fmt.Errorf("POI検索に失敗: %w", err)
+	}
+
+	if len(candidates) < 2 {
+		return nil, fmt.Errorf("十分なPOIが見つかりませんでした")
+	}
+
+	// 目的地周辺のPOIを取得
+	destinationPOIs, err := s.poiRepo.FindNearbyByCategories(ctx, destination, []string{"tourist_attraction", "store"}, 500, 1)
+	if err != nil || len(destinationPOIs) == 0 {
+		// 目的地POIが見つからない場合は座標から生成
+		destinationPOI := &model.POI{
+			ID:   "destination",
+			Name: "目的地",
+			Location: &model.Geometry{
+				Type:        "Point",
+				Coordinates: []float64{destination.Lng, destination.Lat},
+			},
+		}
+		combination := []*model.POI{candidates[0], candidates[1], destinationPOI}
+		return [][]*model.POI{combination}, nil
+	}
+
+	combination := []*model.POI{candidates[0], candidates[1], destinationPOIs[0]}
+	return [][]*model.POI{combination}, nil
 }
 
 // GetTargetCategories は指定されたシナリオで検索対象となるPOIカテゴリを取得する
@@ -31,201 +86,4 @@ func (s *HistoryAndCultureStrategy) GetTargetCategories(scenario string) []strin
 	default:
 		return []string{"tourist_attraction", "museum", "book_store"}
 	}
-}
-
-// FindCombinations は指定されたシナリオで候補POIから組み合わせを見つける
-func (s *HistoryAndCultureStrategy) FindCombinations(scenario string, candidates []*model.POI) [][]*model.POI {
-	targetCategories := s.GetTargetCategories(scenario)
-	filteredSpots := helper.FilterByCategory(candidates, targetCategories)
-
-	if len(filteredSpots) < 3 {
-		return nil
-	}
-
-	switch scenario {
-	case model.ScenarioTempleShrine:
-		return s.findTempleShrineComnations(filteredSpots)
-	case model.ScenarioMuseumTour:
-		return s.findMuseumTourCombinations(filteredSpots)
-	case model.ScenarioOldTown:
-		return s.findOldTownCombinations(filteredSpots)
-	case model.ScenarioCulturalWalk:
-		return s.findCulturalWalkCombinations(filteredSpots)
-	default:
-		return s.findDefaultCombinations(filteredSpots)
-	}
-}
-
-// findTempleShrineComnations は寺社仏閣巡りの組み合わせを見つける
-func (s *HistoryAndCultureStrategy) findTempleShrineComnations(spots []*model.POI) [][]*model.POI {
-	// 神社仏閣を優先的に選択
-	temples := helper.FilterByCategory(spots, []string{"place_of_worship"})
-	if len(temples) >= 2 {
-		mainTemple := helper.FindHighestRated(temples)
-		others := helper.RemovePOI(spots, mainTemple)
-		helper.SortByDistance(mainTemple, others)
-
-		combination := []*model.POI{mainTemple, others[0], others[1]}
-		return [][]*model.POI{combination}
-	}
-
-	return s.findDefaultCombinations(spots)
-}
-
-// findMuseumTourCombinations は博物館・美術館巡りの組み合わせを見つける
-func (s *HistoryAndCultureStrategy) findMuseumTourCombinations(spots []*model.POI) [][]*model.POI {
-	// 博物館・美術館を中心とした組み合わせ
-	museums := helper.FilterByCategory(spots, []string{"museum", "art_gallery"})
-	if len(museums) >= 1 {
-		mainMuseum := helper.FindHighestRated(museums)
-		others := helper.RemovePOI(spots, mainMuseum)
-		helper.SortByDistance(mainMuseum, others)
-
-		if len(others) >= 2 {
-			combination := []*model.POI{mainMuseum, others[0], others[1]}
-			return [][]*model.POI{combination}
-		}
-	}
-
-	return s.findDefaultCombinations(spots)
-}
-
-// findOldTownCombinations は古い街並み散策の組み合わせを見つける
-func (s *HistoryAndCultureStrategy) findOldTownCombinations(spots []*model.POI) [][]*model.POI {
-	// 観光地を中心として、本屋などの文化的スポットを組み合わせ
-	attractions := helper.FilterByCategory(spots, []string{"tourist_attraction"})
-	if len(attractions) >= 1 {
-		mainAttraction := helper.FindHighestRated(attractions)
-		others := helper.RemovePOI(spots, mainAttraction)
-		helper.SortByDistance(mainAttraction, others)
-
-		if len(others) >= 2 {
-			combination := []*model.POI{mainAttraction, others[0], others[1]}
-			return [][]*model.POI{combination}
-		}
-	}
-
-	return s.findDefaultCombinations(spots)
-}
-
-// findCulturalWalkCombinations は文化的散歩の組み合わせを見つける
-func (s *HistoryAndCultureStrategy) findCulturalWalkCombinations(spots []*model.POI) [][]*model.POI {
-	// バランス良く文化的スポットを組み合わせる
-	spotA := helper.FindHighestRated(spots)
-	others := helper.RemovePOI(spots, spotA)
-	helper.SortByDistance(spotA, others)
-
-	if len(others) >= 2 {
-		combination := []*model.POI{spotA, others[0], others[1]}
-		return [][]*model.POI{combination}
-	}
-	return nil
-}
-
-// findDefaultCombinations はデフォルトの組み合わせを見つける
-func (s *HistoryAndCultureStrategy) findDefaultCombinations(spots []*model.POI) [][]*model.POI {
-	spotA := helper.FindHighestRated(spots)
-	others := helper.RemovePOI(spots, spotA)
-	helper.SortByDistance(spotA, others)
-
-	if len(others) >= 2 {
-		combination := []*model.POI{spotA, others[0], others[1]}
-		return [][]*model.POI{combination}
-	}
-	return nil
-}
-
-// FindCombinationsWithDestination は目的地を含むルート組み合わせを見つける
-func (s *HistoryAndCultureStrategy) FindCombinationsWithDestination(scenario string, destinationPOI *model.POI, candidates []*model.POI) [][]*model.POI {
-	targetCategories := s.GetTargetCategories(scenario)
-	filteredSpots := helper.FilterByCategory(candidates, targetCategories)
-
-	if len(filteredSpots) < 2 {
-		return nil
-	}
-
-	switch scenario {
-	case model.ScenarioTempleShrine:
-		return s.findTempleShrineComnationsWithDestination(destinationPOI, filteredSpots)
-	case model.ScenarioMuseumTour:
-		return s.findMuseumTourCombinationsWithDestination(destinationPOI, filteredSpots)
-	case model.ScenarioOldTown:
-		return s.findOldTownCombinationsWithDestination(destinationPOI, filteredSpots)
-	case model.ScenarioCulturalWalk:
-		return s.findCulturalWalkCombinationsWithDestination(destinationPOI, filteredSpots)
-	default:
-		return s.findDefaultCombinationsWithDestination(destinationPOI, filteredSpots)
-	}
-}
-
-// findTempleShrineComnationsWithDestination は寺社仏閣巡りで目的地を含む組み合わせを見つける
-func (s *HistoryAndCultureStrategy) findTempleShrineComnationsWithDestination(destination *model.POI, spots []*model.POI) [][]*model.POI {
-	// 神社仏閣を優先的に選択
-	temples := helper.FilterByCategory(spots, []string{"place_of_worship"})
-
-	if len(temples) >= 2 {
-		helper.SortByRating(temples)
-		combination := []*model.POI{temples[0], temples[1], destination}
-		return [][]*model.POI{combination}
-	}
-
-	return s.findDefaultCombinationsWithDestination(destination, spots)
-}
-
-// findMuseumTourCombinationsWithDestination は博物館・美術館巡りで目的地を含む組み合わせを見つける
-func (s *HistoryAndCultureStrategy) findMuseumTourCombinationsWithDestination(destination *model.POI, spots []*model.POI) [][]*model.POI {
-	// 博物館・美術館を優先
-	museums := helper.FilterByCategory(spots, []string{"museum", "art_gallery"})
-
-	if len(museums) >= 1 && len(spots) >= 2 {
-		helper.SortByRating(museums)
-		others := helper.RemovePOI(spots, museums[0])
-		if len(others) >= 1 {
-			combination := []*model.POI{museums[0], others[0], destination}
-			return [][]*model.POI{combination}
-		}
-	}
-
-	return s.findDefaultCombinationsWithDestination(destination, spots)
-}
-
-// findOldTownCombinationsWithDestination は古い街並み散策で目的地を含む組み合わせを見つける
-func (s *HistoryAndCultureStrategy) findOldTownCombinationsWithDestination(destination *model.POI, spots []*model.POI) [][]*model.POI {
-	// 観光地を中心とした選択
-	attractions := helper.FilterByCategory(spots, []string{"tourist_attraction"})
-
-	if len(attractions) >= 1 && len(spots) >= 2 {
-		helper.SortByRating(attractions)
-		others := helper.RemovePOI(spots, attractions[0])
-		if len(others) >= 1 {
-			combination := []*model.POI{attractions[0], others[0], destination}
-			return [][]*model.POI{combination}
-		}
-	}
-
-	return s.findDefaultCombinationsWithDestination(destination, spots)
-}
-
-// findCulturalWalkCombinationsWithDestination は文化的散歩で目的地を含む組み合わせを見つける
-func (s *HistoryAndCultureStrategy) findCulturalWalkCombinationsWithDestination(destination *model.POI, spots []*model.POI) [][]*model.POI {
-	// バランス良く文化的スポットを選択
-	helper.SortByRating(spots)
-
-	if len(spots) >= 2 {
-		combination := []*model.POI{spots[0], spots[1], destination}
-		return [][]*model.POI{combination}
-	}
-	return nil
-}
-
-// findDefaultCombinationsWithDestination はデフォルトの目的地を含む組み合わせを見つける
-func (s *HistoryAndCultureStrategy) findDefaultCombinationsWithDestination(destination *model.POI, spots []*model.POI) [][]*model.POI {
-	// 評価の高い順にソートして2つ選択
-	helper.SortByRating(spots)
-
-	if len(spots) >= 2 {
-		combination := []*model.POI{spots[0], spots[1], destination}
-		return [][]*model.POI{combination}
-	}
-	return nil
 }
