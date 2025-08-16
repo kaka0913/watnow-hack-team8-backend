@@ -111,7 +111,9 @@ func (g *GoogleDirectionsProvider) buildURL(origin model.LatLng, waypoints ...mo
 // --- Google Maps APIのレスポンスをパースするための構造体 ---
 
 type googleRouteResponse struct {
-	Routes []route `json:"routes"`
+	Routes       []route `json:"routes"`
+	Status       string  `json:"status"`
+	ErrorMessage string  `json:"error_message,omitempty"`
 }
 type route struct {
 	Legs             []leg            `json:"legs"`
