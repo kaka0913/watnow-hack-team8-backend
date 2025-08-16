@@ -5,6 +5,7 @@ const (
 	ThemeGourmet           = "gourmet"
 	ThemeNature            = "nature"
 	ThemeHistoryAndCulture = "history_and_culture"
+	ThemeHorror            = "horror"
 )
 
 // ScenarioConstants はアプリケーションで使用するシナリオの定数
@@ -25,6 +26,12 @@ const (
 	ScenarioMuseumTour   = "museum_tour"
 	ScenarioOldTown      = "old_town"
 	ScenarioCulturalWalk = "cultural_walk"
+
+	// ホラーテーマのシナリオ
+	ScenarioGhostTour    = "ghost_tour"
+	ScenarioHauntedRuins = "haunted_ruins"
+	ScenarioCursedNature = "cursed_nature"
+	ScenarioCemeteryWalk = "cemetery_walk"
 )
 
 // ScenarioNameMap はシナリオIDから日本語名へのマッピング
@@ -40,6 +47,10 @@ var ScenarioNameMap = map[string]string{
 	ScenarioMuseumTour:   "博物館巡り",
 	ScenarioOldTown:      "古い街並み散策",
 	ScenarioCulturalWalk: "文化的散歩",
+	ScenarioGhostTour:    "心霊スポット巡り",
+	ScenarioHauntedRuins: "廃墟探索",
+	ScenarioCursedNature: "呪いの自然",
+	ScenarioCemeteryWalk: "墓地・慰霊散歩",
 }
 
 // ThemeNameMap はテーマIDから日本語名へのマッピング
@@ -47,6 +58,7 @@ var ThemeNameMap = map[string]string{
 	ThemeGourmet:           "グルメ",
 	ThemeNature:            "自然",
 	ThemeHistoryAndCulture: "歴史・文化探訪",
+	ThemeHorror:            "ホラー",
 }
 
 // GetScenarioJapaneseName はシナリオIDから日本語名を取得する
@@ -94,12 +106,23 @@ func GetHistoryAndCultureScenarios() []string {
 	}
 }
 
+// GetHorrorScenarios はホラーテーマのシナリオ一覧を取得する
+func GetHorrorScenarios() []string {
+	return []string{
+		ScenarioGhostTour,
+		ScenarioHauntedRuins,
+		ScenarioCursedNature,
+		ScenarioCemeteryWalk,
+	}
+}
+
 // GetAllThemes は全テーマの一覧を取得する
 func GetAllThemes() []string {
 	return []string{
 		ThemeGourmet,
 		ThemeNature,
 		ThemeHistoryAndCulture,
+		ThemeHorror,
 	}
 }
 
@@ -109,5 +132,6 @@ func GetAllScenarios() []string {
 	scenarios = append(scenarios, GetGourmetScenarios()...)
 	scenarios = append(scenarios, GetNatureScenarios()...)
 	scenarios = append(scenarios, GetHistoryAndCultureScenarios()...)
+	scenarios = append(scenarios, GetHorrorScenarios()...)
 	return scenarios
 }
