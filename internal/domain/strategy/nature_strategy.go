@@ -46,7 +46,7 @@ func (s *NatureStrategy) FindCombinations(ctx context.Context, scenario string, 
 // ロジック: [① メインの公園] → [② ベーカリー/カフェ] → [③ 小さな公園/河川敷]
 func (s *NatureStrategy) findParkTourCombinations(ctx context.Context, userLocation model.LatLng) ([][]*model.POI, error) {
 	// Step 1: メインとなる大きな公園を選択（検索範囲を徒歩圏内に縮小）
-	mainParks, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, []string{"公園", "観光名所"}, 800, 10)
+	mainParks, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, []string{"公園", "観光名所"}, 1500, 10)
 	if err != nil {
 		return nil, fmt.Errorf("メインの公園検索に失敗: %w", err)
 	}
@@ -57,7 +57,7 @@ func (s *NatureStrategy) findParkTourCombinations(ctx context.Context, userLocat
 
 	// Step 2: 公園周辺で休憩ができるベーカリー/カフェを選択（検索範囲を縮小）
 	mainParkLocation := mainPark.ToLatLng()
-	cafes, err := s.poiRepo.FindNearbyByCategories(ctx, mainParkLocation, []string{"ベーカリー", "カフェ"}, 500, 5)
+	cafes, err := s.poiRepo.FindNearbyByCategories(ctx, mainParkLocation, []string{"ベーカリー", "カフェ"}, 800, 5)
 	if err != nil {
 		return nil, fmt.Errorf("カフェ/ベーカリー検索に失敗: %w", err)
 	}
@@ -75,7 +75,7 @@ func (s *NatureStrategy) findParkTourCombinations(ctx context.Context, userLocat
 		searchLocation = mainParkLocation
 	}
 
-	otherNature, err := s.poiRepo.FindNearbyByCategories(ctx, searchLocation, []string{"公園", "自然スポット"}, 600, 10)
+	otherNature, err := s.poiRepo.FindNearbyByCategories(ctx, searchLocation, []string{"公園", "自然スポット"}, 1000, 10)
 	if err != nil {
 		return nil, fmt.Errorf("終点の自然スポット検索に失敗: %w", err)
 	}
@@ -119,7 +119,7 @@ func (s *NatureStrategy) findRiversideCombinations(ctx context.Context, userLoca
 		cafe = helper.FindHighestRated(cafes)
 	}
 
-	// Step 2: メインとなる河川敷を選択（観光名所として登録されている水辺）
+	// Step 2: メインとなる河川敷を選択
 	var searchLocation model.LatLng
 	if cafe != nil {
 		searchLocation = cafe.ToLatLng()
@@ -166,78 +166,6 @@ func (s *NatureStrategy) findRiversideCombinations(ctx context.Context, userLoca
 
 	if len(combinations) == 0 {
 		return nil, errors.New("河川敷散歩の組み合わせが見つかりませんでした")
-	}
-
-	return combinations, nil
-}
-
-// findRiverWalkCombinations は川沿い散歩シナリオの詳細ロジックを実装
-// ロジック: [① 川沿いの公園] → [② 寺院/神社] → [③ 古い街並み]
-func (s *NatureStrategy) findRiverWalkCombinations(ctx context.Context, userLocation model.LatLng) ([][]*model.POI, error) {
-	// Step 1: 川沿いの公園（水辺のある場所）を選択
-	riverParks, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, []string{"公園", "観光名所"}, 2000, 10)
-	if err != nil {
-		return nil, fmt.Errorf("川沿いの公園検索に失敗: %w", err)
-	}
-	if len(riverParks) == 0 {
-		return nil, errors.New("川沿いの公園が見つかりませんでした")
-	}
-
-	// 評価が高い川沿いの公園を選択
-	riverPark := helper.FindHighestRated(riverParks)
-	riverParkLocation := riverPark.ToLatLng()
-
-	// Step 2: 川沿いから訪問できる寺院/神社を選択
-	temples, err := s.poiRepo.FindNearbyByCategories(ctx, riverParkLocation, []string{"寺院"}, 1200, 8)
-	if err != nil {
-		return nil, fmt.Errorf("寺院/神社検索に失敗: %w", err)
-	}
-	var temple *model.POI
-	if len(temples) > 0 {
-		helper.SortByDistanceFromLocation(riverParkLocation, temples)
-		temple = temples[0]
-	}
-
-	// Step 3: 古い街並みや歴史的な場所を選択
-	var searchLocation model.LatLng
-	if temple != nil {
-		searchLocation = temple.ToLatLng()
-	} else {
-		searchLocation = riverParkLocation
-	}
-
-	historicSpots, err := s.poiRepo.FindNearbyByCategories(ctx, searchLocation, []string{"観光名所"}, 1000, 8)
-	if err != nil {
-		return nil, fmt.Errorf("歴史的スポット検索に失敗: %w", err)
-	}
-
-	// 除外ロジック（すでに選択された場所を除く）
-	filteredSpots := historicSpots
-	if temple != nil {
-		filteredSpots = helper.RemovePOI(filteredSpots, temple)
-	}
-	filteredSpots = helper.RemovePOI(filteredSpots, riverPark)
-
-	var historicSpot *model.POI
-	if len(filteredSpots) > 0 {
-		helper.SortByDistanceFromLocation(searchLocation, filteredSpots)
-		historicSpot = filteredSpots[0]
-	}
-
-	// 組み合わせを生成
-	var combinations [][]*model.POI
-	if temple != nil && historicSpot != nil {
-		combinations = append(combinations, []*model.POI{riverPark, temple, historicSpot})
-	} else if temple != nil {
-		// 歴史的スポットが見つからない場合は公園と寺院のみ
-		combinations = append(combinations, []*model.POI{riverPark, temple})
-	} else if historicSpot != nil {
-		// 寺院が見つからない場合は公園と歴史的スポットのみ
-		combinations = append(combinations, []*model.POI{riverPark, historicSpot})
-	}
-
-	if len(combinations) == 0 {
-		return nil, errors.New("川沿い散歩の組み合わせが見つかりませんでした")
 	}
 
 	return combinations, nil
