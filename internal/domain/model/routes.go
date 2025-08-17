@@ -44,6 +44,46 @@ type RouteProposal struct {
 	GeneratedStory           string           `json:"generated_story"`            // 生成された物語
 }
 
+type FirestoreRouteProposal struct {
+	Title                    string           `firestore:"title"`
+	EstimatedDurationMinutes int              `firestore:"estimated_duration_minutes"`
+	EstimatedDistanceMeters  int              `firestore:"estimated_distance_meters"`
+	Theme                    string           `firestore:"theme"`
+	DisplayHighlights        []string         `firestore:"display_highlights"`
+	NavigationSteps          []NavigationStep `firestore:"navigation_steps"`
+	RoutePolyline            string           `firestore:"route_polyline"`
+	GeneratedStory           string           `firestore:"generated_story"`
+	ExpireAt                 time.Time        `firestore:"expireAt"`
+}
+
+func (rp *RouteProposal) ToFirestoreRouteProposal(ttlHours int) *FirestoreRouteProposal {
+	return &FirestoreRouteProposal{
+		Title:                    rp.Title,
+		EstimatedDurationMinutes: rp.EstimatedDurationMinutes,
+		EstimatedDistanceMeters:  rp.EstimatedDistanceMeters,
+		Theme:                    rp.Theme,
+		DisplayHighlights:        rp.DisplayHighlights,
+		NavigationSteps:          rp.NavigationSteps,
+		RoutePolyline:            rp.RoutePolyline,
+		GeneratedStory:           rp.GeneratedStory,
+		ExpireAt:                 time.Now().Add(time.Duration(ttlHours) * time.Hour),
+	}
+}
+
+func (frp *FirestoreRouteProposal) ToRouteProposal(proposalID string) *RouteProposal {
+	return &RouteProposal{
+		ProposalID:               proposalID,
+		Title:                    frp.Title,
+		EstimatedDurationMinutes: frp.EstimatedDurationMinutes,
+		EstimatedDistanceMeters:  frp.EstimatedDistanceMeters,
+		Theme:                    frp.Theme,
+		DisplayHighlights:        frp.DisplayHighlights,
+		NavigationSteps:          frp.NavigationSteps,
+		RoutePolyline:            frp.RoutePolyline,
+		GeneratedStory:           frp.GeneratedStory,
+	}
+}
+
 type NavigationStep struct {
 	Type                 string  `json:"type"`                    // "navigation" or "poi"
 	Name                 string  `json:"name,omitempty"`          // POIの名前（typeがpoiの場合）
