@@ -62,7 +62,7 @@ func (s *routeSuggestionService) SuggestRoutes(ctx context.Context, req *model.S
 
 	if req.HasDestination() {
 		combinationFinder = func(ctx context.Context, scenario string, userLocation model.LatLng) ([][]*model.POI, error) {
-			return selectedStrategy.FindCombinationsWithDestination(ctx, scenario, userLocation, *req.Destination)
+			return selectedStrategy.FindCombinationsWithDestination(ctx, scenario, userLocation, *req.Destination())
 		}
 		routeOptimizer = s.optimizeRouteWithDestination
 	} else {
@@ -70,7 +70,7 @@ func (s *routeSuggestionService) SuggestRoutes(ctx context.Context, req *model.S
 		routeOptimizer = s.optimizeRoute
 	}
 
-	return s.executeScenariosInParallel(ctx, req.Theme, scenariosToRun, req.UserLocation, combinationFinder, routeOptimizer)
+	return s.executeScenariosInParallel(ctx, req.Theme, scenariosToRun, req.UserLocation(), req.RealtimeContext, combinationFinder, routeOptimizer)
 }
 
 func (s *routeSuggestionService) GetAvailableScenariosForTheme(theme string) ([]string, error) {
@@ -98,6 +98,7 @@ func (s *routeSuggestionService) executeScenariosInParallel(
 	theme string,
 	scenarios []string,
 	userLocation model.LatLng,
+	realtimeContext *model.RealtimeContext,
 	findCombinations combinationFinderFunc, // 組み合わせ取得ロジックを引数で受け取る
 	optimizeRoute routeOptimizerFunc, // ルート最適化ロジックを引数で受け取る
 ) ([]*model.SuggestedRoute, error) {
@@ -121,7 +122,7 @@ func (s *routeSuggestionService) executeScenariosInParallel(
 				return
 			}
 			// 2. 組み合わせからルートを並行構築
-			routes := s.buildRoutesFromCombinations(ctx, theme, sc, userLocation, combinations, optimizeRoute)
+			routes := s.buildRoutesFromCombinations(ctx, theme, sc, userLocation, realtimeContext, combinations, optimizeRoute)
 			resultsChan <- scenarioResult{routes: routes}
 		}(scenario)
 	}
@@ -158,6 +159,7 @@ func (s *routeSuggestionService) buildRoutesFromCombinations(
 	ctx context.Context,
 	theme, scenario string,
 	userLocation model.LatLng,
+	realtimeContext *model.RealtimeContext,
 	combinations [][]*model.POI,
 	optimizeRoute routeOptimizerFunc, // 最適化関数を引数で受け取る
 ) []*model.SuggestedRoute {
@@ -169,7 +171,7 @@ func (s *routeSuggestionService) buildRoutesFromCombinations(
 		wg.Add(1)
 		go func(index int, combination []*model.POI) {
 			defer wg.Done()
-			routeName := s.routeBuilderHelper.GenerateRouteName(theme, scenario, combination, index)
+			routeName := s.routeBuilderHelper.GenerateRouteName(theme, scenario, combination, index, realtimeContext)
 			// 渡された最適化関数を実行
 			route, err := optimizeRoute(ctx, routeName, userLocation, combination)
 			if err == nil {
