@@ -50,6 +50,19 @@ func main() {
 	}
 	fmt.Println("✅ Supabase connection successful!")
 
+	fmt.Println("Initializing PostgreSQL client...")
+	postgresClient, err := database.NewPostgreSQLClient()
+	if err != nil {
+		log.Fatalf("PostgreSQLクライアント初期化失敗: %v", err)
+	}
+	defer postgresClient.Close()
+
+	fmt.Println("Performing PostgreSQL health check...")
+	if err := postgresClient.HealthCheck(); err != nil {
+		log.Fatalf("PostgreSQLヘルスチェック失敗: %v", err)
+	}
+	fmt.Println("✅ PostgreSQL connection successful!")
+
 	fmt.Println("Initializing Google Directions Provider...")
 	directionsProvider := maps.NewGoogleDirectionsProvider(googleMapsAPIKey)
 	fmt.Println("✅ Google Directions Provider initialized!")
@@ -59,8 +72,8 @@ func main() {
 	walksUsecase := usecase.NewWalksUsecase(walksRepo)
 	walksHandler := handler.NewWalksHandler(walksUsecase)
 
-	// POIリポジトリとルート提案サービスの初期化
-	poiRepo := repository.NewSupabasePOIsRepository(supabaseClient)
+	// POIリポジトリとルート提案サービスの初期化（PostgreSQL使用）
+	poiRepo := repository.NewPostgresPOIsRepository(postgresClient)
 	routeSuggestionService := service.NewRouteSuggestionService(directionsProvider, poiRepo)
 
 	// TODO: ルート提案ハンドラーの追加
