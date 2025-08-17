@@ -136,45 +136,45 @@ func GetAllScenarios() []string {
 	return scenarios
 }
 
-// シナリオ固有のPOIカテゴリマッピング
+// シナリオ固有のPOIカテゴリマッピング（実際にSupabaseに存在するカテゴリのみ使用）
 var ScenarioCategoriesMap = map[string][]string{
 	// グルメシナリオ
 	ScenarioCafeHopping:  {"カフェ", "ベーカリー", "観光名所"},
 	ScenarioBakeryTour:   {"ベーカリー", "カフェ", "店舗"},
-	ScenarioLocalGourmet: {"レストラン", "店舗", "観光名所"},
-	ScenarioSweetJourney: {"ベーカリー", "カフェ", "スイーツ", "店舗"},
+	ScenarioLocalGourmet: {"店舗", "観光名所"},
+	ScenarioSweetJourney: {"ベーカリー", "カフェ", "店舗"},
 
-	// 自然シナリオ
+	// 自然シナリオ（実際に存在するカテゴリに更新）
 	ScenarioParkTour:     {"公園", "観光名所", "ベーカリー", "カフェ"},
-	ScenarioRiverside:    {"カフェ", "観光名所", "公園", "自然スポット"},
+	ScenarioRiverside:    {"河川敷公園", "公園", "カフェ", "観光名所"},
 	ScenarioTempleNature: {"寺院", "公園", "観光名所", "店舗"},
 
 	// 歴史・文化シナリオ
-	ScenarioTempleShrine: {"寺院", "観光名所"},
+	ScenarioTempleShrine: {"寺院", "神社", "観光名所"},
 	ScenarioMuseumTour:   {"博物館", "美術館・ギャラリー", "観光名所"},
-	ScenarioOldTown:      {"観光名所", "店舗", "文化施設"},
-	ScenarioCulturalWalk: {"観光名所", "博物館", "美術館・ギャラリー", "文化施設"},
+	ScenarioOldTown:      {"観光名所", "店舗"},
+	ScenarioCulturalWalk: {"観光名所", "博物館", "美術館・ギャラリー"},
 
 	// ホラーシナリオ
 	ScenarioGhostTour:    {"観光名所", "寺院", "店舗"},
-	ScenarioHauntedRuins: {"観光名所", "廃墟"},
-	ScenarioCursedNature: {"墓地", "寺院", "公園", "自然スポット"},
-	ScenarioCemeteryWalk: {"墓地", "寺院", "観光名所"},
+	ScenarioHauntedRuins: {"観光名所"},
+	ScenarioCursedNature: {"寺院", "公園"},
+	ScenarioCemeteryWalk: {"寺院", "神社", "観光名所"},
 }
 
-// テーマごとのPOIカテゴリマッピング
+// テーマごとのPOIカテゴリマッピング（実際にSupabaseに存在するカテゴリのみ使用）
 var ThemeCategoriesMap = map[string][]string{
 	ThemeGourmet: {
-		"カフェ", "ベーカリー", "レストラン", "スイーツ", "店舗", "観光名所",
+		"カフェ", "ベーカリー", "店舗", "観光名所",
 	},
 	ThemeNature: {
-		"カフェ", "観光名所", "公園", "寺院", "自然スポット", "ベーカリー", "店舗",
+		"公園", "河川敷公園", "観光名所", "寺院", "神社", "カフェ", "ベーカリー", "店舗",
 	},
 	ThemeHistoryAndCulture: {
-		"寺院", "博物館", "美術館・ギャラリー", "観光名所", "店舗", "文化施設",
+		"寺院", "神社", "博物館", "美術館・ギャラリー", "観光名所", "店舗",
 	},
 	ThemeHorror: {
-		"観光名所", "寺院", "公園", "廃墟", "墓地", "自然スポット", "店舗",
+		"観光名所", "寺院", "神社", "公園", "店舗",
 	},
 }
 
@@ -191,8 +191,8 @@ func GetThemeCategories(theme string) []string {
 	if categories, ok := ThemeCategoriesMap[theme]; ok {
 		return categories
 	}
-	// デフォルトは全カテゴリ
-	return []string{"カフェ", "観光名所", "公園", "博物館", "レストラン", "店舗", "ホテル", "寺院", "自然スポット", "ベーカリー", "美術館・ギャラリー"}
+	// デフォルトは実際に存在する全カテゴリ
+	return []string{"カフェ", "ベーカリー", "公園", "博物館", "図書館", "寺院", "店舗", "書店", "河川敷公園", "神社", "美術館・ギャラリー", "花屋", "観光名所", "雑貨店"}
 }
 
 // GetGourmetCategories はグルメテーマのPOIカテゴリ一覧を取得する
