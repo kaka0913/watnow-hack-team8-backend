@@ -26,7 +26,7 @@ func (s *HorrorStrategy) GetAvailableScenarios() []string {
 // FindCombinations は指定されたシナリオでPOI組み合わせを見つける
 func (s *HorrorStrategy) FindCombinations(ctx context.Context, scenario string, userLocation model.LatLng) ([][]*model.POI, error) {
 	// NOTE: 一時的な実装 - 将来的にはシナリオごとの詳細ロジックを実装
-	candidates, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, s.GetTargetCategories(scenario), 1500, 10)
+	candidates, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, model.GetHorrorCategories(), 1500, 10)
 	if err != nil {
 		return nil, fmt.Errorf("POI検索に失敗: %w", err)
 	}
@@ -43,7 +43,7 @@ func (s *HorrorStrategy) FindCombinations(ctx context.Context, scenario string, 
 // FindCombinationsWithDestination は目的地を含むルート組み合わせを見つける
 func (s *HorrorStrategy) FindCombinationsWithDestination(ctx context.Context, scenario string, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error) {
 	// NOTE: 一時的な実装 - 将来的にはシナリオごとの詳細ロジックを実装
-	candidates, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, s.GetTargetCategories(scenario), 1500, 10)
+	candidates, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, model.GetHorrorCategories(), 1500, 10)
 	if err != nil {
 		return nil, fmt.Errorf("POI検索に失敗: %w", err)
 	}
@@ -70,20 +70,4 @@ func (s *HorrorStrategy) FindCombinationsWithDestination(ctx context.Context, sc
 
 	combination := []*model.POI{candidates[0], candidates[1], destinationPOIs[0]}
 	return [][]*model.POI{combination}, nil
-}
-
-// GetTargetCategories は指定されたシナリオで検索対象となるPOIカテゴリを取得する
-func (s *HorrorStrategy) GetTargetCategories(scenario string) []string {
-	switch scenario {
-	case model.ScenarioGhostTour:
-		return []string{"tourist_attraction", "establishment", "lodging"}
-	case model.ScenarioHauntedRuins:
-		return []string{"tourist_attraction", "establishment"}
-	case model.ScenarioCursedNature:
-		return []string{"cemetery", "place_of_worship", "park"}
-	case model.ScenarioCemeteryWalk:
-		return []string{"cemetery", "place_of_worship", "tourist_attraction"}
-	default:
-		return []string{"tourist_attraction", "establishment"}
-	}
 }

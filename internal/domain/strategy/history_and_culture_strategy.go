@@ -26,7 +26,7 @@ func (s *HistoryAndCultureStrategy) GetAvailableScenarios() []string {
 // FindCombinations は指定されたシナリオでPOI組み合わせを見つける
 func (s *HistoryAndCultureStrategy) FindCombinations(ctx context.Context, scenario string, userLocation model.LatLng) ([][]*model.POI, error) {
 	// NOTE: 一時的な実装 - 将来的にはシナリオごとの詳細ロジックを実装
-	candidates, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, s.GetTargetCategories(scenario), 1500, 10)
+	candidates, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, model.GetHistoryAndCultureCategories(), 1500, 10)
 	if err != nil {
 		return nil, fmt.Errorf("POI検索に失敗: %w", err)
 	}
@@ -43,7 +43,7 @@ func (s *HistoryAndCultureStrategy) FindCombinations(ctx context.Context, scenar
 // FindCombinationsWithDestination は目的地を含むルート組み合わせを見つける
 func (s *HistoryAndCultureStrategy) FindCombinationsWithDestination(ctx context.Context, scenario string, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error) {
 	// NOTE: 一時的な実装 - 将来的にはシナリオごとの詳細ロジックを実装
-	candidates, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, s.GetTargetCategories(scenario), 1500, 10)
+	candidates, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, model.GetHistoryAndCultureCategories(), 1500, 10)
 	if err != nil {
 		return nil, fmt.Errorf("POI検索に失敗: %w", err)
 	}
@@ -70,20 +70,4 @@ func (s *HistoryAndCultureStrategy) FindCombinationsWithDestination(ctx context.
 
 	combination := []*model.POI{candidates[0], candidates[1], destinationPOIs[0]}
 	return [][]*model.POI{combination}, nil
-}
-
-// GetTargetCategories は指定されたシナリオで検索対象となるPOIカテゴリを取得する
-func (s *HistoryAndCultureStrategy) GetTargetCategories(scenario string) []string {
-	switch scenario {
-	case model.ScenarioTempleShrine:
-		return []string{"place_of_worship", "tourist_attraction"}
-	case model.ScenarioMuseumTour:
-		return []string{"museum", "art_gallery", "tourist_attraction"}
-	case model.ScenarioOldTown:
-		return []string{"tourist_attraction", "establishment", "book_store"}
-	case model.ScenarioCulturalWalk:
-		return []string{"tourist_attraction", "museum", "book_store", "art_gallery"}
-	default:
-		return []string{"tourist_attraction", "museum", "book_store"}
-	}
 }
