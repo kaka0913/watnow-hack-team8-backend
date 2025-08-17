@@ -21,9 +21,9 @@ func NewPOISearchHelper(repo repository.POIsRepository) *POISearchHelper {
 }
 
 // FindNearestPOI は目的地に該当するPOIがないかを確認するために、指定座標に最も近いPOIを見つける
-func (h *POISearchHelper) FindNearestPOI(ctx context.Context, location model.LatLng) (*model.POI, error) {
-	// 目的地周辺のPOIを検索（半径500m、最大10件）
-	nearbyPOIs, err := h.poiRepo.FindNearbyByCategories(ctx, location, []string{}, 500, 10)
+func (h *POISearchHelper) FindNearestPOI(ctx context.Context, location model.LatLng, categories []string) (*model.POI, error) {
+	// 目的地周辺のPOIを検索（半径1000m）
+	nearbyPOIs, err := h.poiRepo.FindNearbyByCategories(ctx, location, categories, 1000, 20)
 	if err != nil {
 		return nil, err
 	}
@@ -33,6 +33,42 @@ func (h *POISearchHelper) FindNearestPOI(ctx context.Context, location model.Lat
 
 	// 最も近いPOIを返す
 	return nearbyPOIs[0], nil
+}
+
+// GetCategoriesForScenario はシナリオに応じて適切なPOIカテゴリを取得する
+func (h *POISearchHelper) GetCategoriesForScenario(theme, scenario string) []string {
+	return model.GetCategoriesForThemeAndScenario(theme, scenario)
+}
+
+// ValidateThemeAndScenario はテーマとシナリオの組み合わせが有効かチェックする
+func (h *POISearchHelper) ValidateThemeAndScenario(theme, scenario string) bool {
+	if !model.IsValidTheme(theme) {
+		return false
+	}
+	if !model.IsValidScenario(scenario) {
+		return false
+	}
+	
+	// シナリオがテーマに属するかチェック
+	validScenarios := model.GetScenariosForTheme(theme)
+	for _, validScenario := range validScenarios {
+		if validScenario == scenario {
+			return true
+		}
+	}
+	return false
+}
+
+// GetAvailableScenarios は指定されたテーマで利用可能なシナリオを取得する
+func (h *POISearchHelper) GetAvailableScenarios(theme string) []string {
+	return model.GetScenariosForTheme(theme)
+}
+
+// GetThemeAndScenarioNames は指定されたテーマとシナリオの日本語名を取得する
+func (h *POISearchHelper) GetThemeAndScenarioNames(theme, scenario string) (string, string) {
+	themeName := model.GetThemeJapaneseName(theme)
+	scenarioName := model.GetScenarioJapaneseName(scenario)
+	return themeName, scenarioName
 }
 
 // ValidateCombination は組み合わせが有効かどうかをチェックする
