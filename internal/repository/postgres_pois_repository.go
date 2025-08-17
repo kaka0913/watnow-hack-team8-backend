@@ -20,6 +20,17 @@ func NewPostgresPOIsRepository(client *database.PostgreSQLClient) repository.POI
 	}
 }
 
+// filterSmokingAreas は喫煙所を除外してPOIリストをフィルタリングする
+func (r *PostgresPOIsRepository) filterSmokingAreas(pois []*model.POI) []*model.POI {
+	var filtered []*model.POI
+	for _, poi := range pois {
+		if poi != nil && poi.Name != "喫煙所" {
+			filtered = append(filtered, poi)
+		}
+	}
+	return filtered
+}
+
 // POIResult PostGIS関数の結果を受け取るための構造体
 type POIResult struct {
 	ID            string
@@ -201,7 +212,24 @@ func (r *PostgresPOIsRepository) GetByCategories(ctx context.Context, categories
 		pois = append(pois, *poi)
 	}
 
-	return pois, nil
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("行イテレーション中のエラー: %w", err)
+	}
+
+	// 喫煙所を除外してフィルタリング（[]model.POI から []*model.POI に変換してフィルタリング）
+	var poiPtrs []*model.POI
+	for i := range pois {
+		poiPtrs = append(poiPtrs, &pois[i])
+	}
+	filtered := r.filterSmokingAreas(poiPtrs)
+	
+	// 結果を[]model.POIに戻す
+	var finalResult []model.POI
+	for _, poi := range filtered {
+		finalResult = append(finalResult, *poi)
+	}
+
+	return finalResult, nil
 }
 
 func (r *PostgresPOIsRepository) GetByCategory(ctx context.Context, category string, lat, lng float64, radiusMeters int) ([]model.POI, error) {
@@ -343,6 +371,13 @@ func (r *PostgresPOIsRepository) FindNearbyByCategories(ctx context.Context, loc
 		}
 		result = append(result, poi)
 	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("行イテレーション中のエラー: %w", err)
+	}
+
+	// 喫煙所を除外してフィルタリング
+	result = r.filterSmokingAreas(result)
 
 	return result, nil
 }
