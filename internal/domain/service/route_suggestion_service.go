@@ -189,16 +189,37 @@ func (s *routeSuggestionService) buildRoutesFromCombinations(
 
 // optimizeRoute は目的地なしのルートを最適化する
 func (s *routeSuggestionService) optimizeRoute(ctx context.Context, name string, userLocation model.LatLng, combination []*model.POI) (*model.SuggestedRoute, error) {
-	if len(combination) != 3 {
-		return nil, errors.New("組み合わせは3つのスポットである必要があります")
+	// POI数の検証（最低2箇所必要）
+	if len(combination) < 2 {
+		return nil, errors.New("ルート生成には最低2箇所のスポットが必要です")
 	}
-	permutations := s.routeBuilderHelper.GeneratePermutations(combination)
+	
+	// nilPOIのチェック
+	validPOIs := make([]*model.POI, 0, len(combination))
+	for _, poi := range combination {
+		if poi != nil {
+			validPOIs = append(validPOIs, poi)
+		}
+	}
+	
+	if len(validPOIs) < 2 {
+		return nil, errors.New("有効なスポットが不足しています（最低2箇所必要）")
+	}
+	
+	// 2箇所の場合は順列なし、3箇所以上の場合は順列生成
+	var routesToTry [][]*model.POI
+	if len(validPOIs) == 2 {
+		routesToTry = [][]*model.POI{validPOIs}
+	} else {
+		routesToTry = s.routeBuilderHelper.GeneratePermutations(validPOIs)
+	}
+	
 	var bestRoute *model.SuggestedRoute
 	var shortestDuration = time.Duration(24 * time.Hour)
 
-	for _, perm := range permutations {
-		waypointLatLngs := make([]model.LatLng, len(perm))
-		for i, poi := range perm {
+	for _, route := range routesToTry {
+		waypointLatLngs := make([]model.LatLng, len(route))
+		for i, poi := range route {
 			waypointLatLngs[i] = poi.ToLatLng()
 		}
 		routeDetails, err := s.directionsProvider.GetWalkingRoute(ctx, userLocation, waypointLatLngs...)
@@ -216,7 +237,7 @@ func (s *routeSuggestionService) optimizeRoute(ctx context.Context, name string,
 			shortestDuration = routeDetails.TotalDuration
 			bestRoute = &model.SuggestedRoute{
 				Name:          fmt.Sprintf("%s (%d分)", name, int(routeDetails.TotalDuration.Minutes())),
-				Spots:         perm,
+				Spots:         route,
 				TotalDuration: routeDetails.TotalDuration,
 				Polyline:      routeDetails.Polyline,
 			}
@@ -231,14 +252,38 @@ func (s *routeSuggestionService) optimizeRoute(ctx context.Context, name string,
 
 // optimizeRouteWithDestination は目的地ありのルートを最適化する
 func (s *routeSuggestionService) optimizeRouteWithDestination(ctx context.Context, name string, userLocation model.LatLng, combination []*model.POI) (*model.SuggestedRoute, error) {
-	if len(combination) != 3 {
-		return nil, errors.New("組み合わせは3つのスポット(経由地2+目的地1)である必要があります")
+	// POI数の検証（最低2箇所必要、最後が目的地）
+	if len(combination) < 2 {
+		return nil, errors.New("目的地ありルート生成には最低2箇所のスポットが必要です")
 	}
-	poi1, poi2, destination := combination[0], combination[1], combination[2]
-	routesToTry := [][]*model.POI{
-		{poi1, poi2, destination},
-		{poi2, poi1, destination},
+	
+	// nilPOIのチェック
+	validPOIs := make([]*model.POI, 0, len(combination))
+	for _, poi := range combination {
+		if poi != nil {
+			validPOIs = append(validPOIs, poi)
+		}
 	}
+	
+	if len(validPOIs) < 2 {
+		return nil, errors.New("有効なスポットが不足しています（最低2箇所必要）")
+	}
+	
+	// 最後のPOIを目的地として扱う
+	destination := validPOIs[len(validPOIs)-1]
+	waypoints := validPOIs[:len(validPOIs)-1]
+	
+	// 経由地が1つの場合は順列なし、複数の場合は順列生成
+	var routesToTry [][]*model.POI
+	if len(waypoints) == 1 {
+		routesToTry = [][]*model.POI{append(waypoints, destination)}
+	} else {
+		waypointPermutations := s.routeBuilderHelper.GeneratePermutations(waypoints)
+		for _, perm := range waypointPermutations {
+			routesToTry = append(routesToTry, append(perm, destination))
+		}
+	}
+	
 	var bestRoute *model.SuggestedRoute
 	var shortestDuration = time.Duration(24 * time.Hour)
 
