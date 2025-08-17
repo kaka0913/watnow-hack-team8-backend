@@ -86,7 +86,18 @@ func (r *PostgresPOIsRepository) GetByID(ctx context.Context, id string) (*model
 		return nil, fmt.Errorf("POIデータの取得失敗: %w", err)
 	}
 
-	return result.ToPOI()
+	poi, err := result.ToPOI()
+	if err != nil {
+		return nil, err
+	}
+
+	// 喫煙所を除外してフィルタリング
+	filtered := r.filterSmokingAreas([]*model.POI{poi})
+	if len(filtered) == 0 {
+		return nil, fmt.Errorf("POI ID %s は喫煙所のため除外されました", id)
+	}
+
+	return filtered[0], nil
 }
 
 func (r *PostgresPOIsRepository) GetByGridCellID(ctx context.Context, gridCellID int) ([]model.POI, error) {
@@ -114,7 +125,20 @@ func (r *PostgresPOIsRepository) GetByGridCellID(ctx context.Context, gridCellID
 		pois = append(pois, *poi)
 	}
 
-	return pois, nil
+	// 喫煙所を除外してフィルタリング（[]model.POI から []*model.POI に変換してフィルタリング）
+	var poiPtrs []*model.POI
+	for i := range pois {
+		poiPtrs = append(poiPtrs, &pois[i])
+	}
+	filtered := r.filterSmokingAreas(poiPtrs)
+	
+	// 結果を[]model.POIに戻す
+	var finalResult []model.POI
+	for _, poi := range filtered {
+		finalResult = append(finalResult, *poi)
+	}
+
+	return finalResult, nil
 }
 
 func (r *PostgresPOIsRepository) GetNearbyPOIs(ctx context.Context, lat, lng float64, radiusMeters int) ([]model.POI, error) {
@@ -160,7 +184,20 @@ func (r *PostgresPOIsRepository) GetNearbyPOIs(ctx context.Context, lat, lng flo
 		pois = append(pois, *poi)
 	}
 
-	return pois, nil
+	// 喫煙所を除外してフィルタリング（[]model.POI から []*model.POI に変換してフィルタリング）
+	var poiPtrs []*model.POI
+	for i := range pois {
+		poiPtrs = append(poiPtrs, &pois[i])
+	}
+	filtered := r.filterSmokingAreas(poiPtrs)
+	
+	// 結果を[]model.POIに戻す
+	var finalResult []model.POI
+	for _, poi := range filtered {
+		finalResult = append(finalResult, *poi)
+	}
+
+	return finalResult, nil
 }
 
 func (r *PostgresPOIsRepository) GetByCategories(ctx context.Context, categories []string, lat, lng float64, radiusMeters int) ([]model.POI, error) {
@@ -275,7 +312,20 @@ func (r *PostgresPOIsRepository) GetByCategory(ctx context.Context, category str
 		pois = append(pois, *poi)
 	}
 
-	return pois, nil
+	// 喫煙所を除外してフィルタリング（[]model.POI から []*model.POI に変換してフィルタリング）
+	var poiPtrs []*model.POI
+	for i := range pois {
+		poiPtrs = append(poiPtrs, &pois[i])
+	}
+	filtered := r.filterSmokingAreas(poiPtrs)
+	
+	// 結果を[]model.POIに戻す
+	var finalResult []model.POI
+	for _, poi := range filtered {
+		finalResult = append(finalResult, *poi)
+	}
+
+	return finalResult, nil
 }
 
 func (r *PostgresPOIsRepository) GetByRatingRange(ctx context.Context, minRating float64, lat, lng float64, radiusMeters int) ([]model.POI, error) {
@@ -320,7 +370,20 @@ func (r *PostgresPOIsRepository) GetByRatingRange(ctx context.Context, minRating
 		pois = append(pois, *poi)
 	}
 
-	return pois, nil
+	// 喫煙所を除外してフィルタリング（[]model.POI から []*model.POI に変換してフィルタリング）
+	var poiPtrs []*model.POI
+	for i := range pois {
+		poiPtrs = append(poiPtrs, &pois[i])
+	}
+	filtered := r.filterSmokingAreas(poiPtrs)
+	
+	// 結果を[]model.POIに戻す
+	var finalResult []model.POI
+	for _, poi := range filtered {
+		finalResult = append(finalResult, *poi)
+	}
+
+	return finalResult, nil
 }
 
 // FindNearbyByCategories ルート提案用のメソッド：カテゴリと位置に基づいてPOIを検索
