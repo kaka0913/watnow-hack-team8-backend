@@ -308,7 +308,7 @@ func (s *NatureStrategy) FindCombinationsWithDestination(ctx context.Context, sc
 // ロジック: [① 公園A] → [② 公園B] (目的地へのルート上)
 func (s *NatureStrategy) findParkTourWithDestination(ctx context.Context, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error) {
 	// 目的地周辺のPOIを特定
-	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination)
+	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, model.GetNatureCategories())
 	if err != nil {
 		return nil, fmt.Errorf("目的地周辺のPOIが見つかりません: %w", err)
 	}
@@ -346,7 +346,7 @@ func (s *NatureStrategy) findParkTourWithDestination(ctx context.Context, userLo
 // ロジック: [① 河川敷の入口] → [② 河川敷沿いの公園] (目的地へのルート上)
 func (s *NatureStrategy) findRiversideWithDestination(ctx context.Context, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error) {
 	// 目的地周辺のPOIを特定
-	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination)
+	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, model.GetNatureCategories())
 	if err != nil {
 		return nil, fmt.Errorf("目的地周辺のPOIが見つかりません: %w", err)
 	}
@@ -388,7 +388,7 @@ func (s *NatureStrategy) findRiversideWithDestination(ctx context.Context, userL
 // ロジック: [① 庭園のある寺社] → [② 開けた公園] (目的地へのルート上)
 func (s *NatureStrategy) findTempleNatureWithDestination(ctx context.Context, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error) {
 	// 目的地周辺のPOIを特定
-	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination)
+	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, model.GetNatureCategories())
 	if err != nil {
 		return nil, fmt.Errorf("目的地周辺のPOIが見つかりません: %w", err)
 	}
