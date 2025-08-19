@@ -22,7 +22,7 @@ type GeminiClient struct {
 func NewGeminiClient(apiKey string) *GeminiClient {
 	return &GeminiClient{
 		apiKey:  apiKey,
-		baseURL: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+		baseURL: "https://generativelanguage.googleapis.com/v1beta",
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 		},
@@ -77,7 +77,7 @@ func (c *GeminiClient) GenerateContent(ctx context.Context, prompt string) (stri
 		return "", fmt.Errorf("リクエストのシリアライズに失敗: %w", err)
 	}
 
-	url := fmt.Sprintf("%s/models/gemini-pro:generateContent?key=%s", c.baseURL, c.apiKey)
+	url := fmt.Sprintf("%s/models/gemini-2.0-flash:generateContent?key=%s", c.baseURL, c.apiKey)
 	
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(reqBody))
 	if err != nil {
