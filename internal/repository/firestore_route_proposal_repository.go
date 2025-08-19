@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 
 	"cloud.google.com/go/firestore"
 	"github.com/google/uuid"
@@ -23,44 +24,107 @@ func NewFirestoreRouteProposalRepository(client *firestore.Client) *FirestoreRou
 	}
 }
 
-// SaveRouteProposals は複数のルート提案をFirestoreに保存し、proposal_idを生成して返す
-func (r *FirestoreRouteProposalRepository) SaveRouteProposals(ctx context.Context, proposals []*model.SuggestedRoute, theme string, ttlHours int) ([]*model.RouteProposal, error) {
-	var result []*model.RouteProposal
+// SaveRouteProposalsWithStory は複数のルート提案をFirestoreに並行保存し、proposal_idを生成して返す
+func (r *FirestoreRouteProposalRepository) SaveRouteProposalsWithStory(ctx context.Context, proposals []*model.SuggestedRoute, theme string, ttlHours int, titles []string, stories []string) ([]*model.RouteProposal, error) {
+	if len(proposals) != len(titles) || len(proposals) != len(stories) {
+		return nil, fmt.Errorf("提案数とタイトル数・物語数が一致しません")
+	}
 
 	collection := r.client.Collection("routeProposals")
 
-	for i, suggestedRoute := range proposals {
-		// 一時IDを生成
-		proposalID := fmt.Sprintf("temp_prop_%s", uuid.New().String())
-
-		// SuggestedRouteをRouteProposalに変換
-		routeProposal := &model.RouteProposal{
-			ProposalID:               proposalID,
-			Title:                    suggestedRoute.Name,
-			EstimatedDurationMinutes: int(suggestedRoute.TotalDuration.Minutes()),
-			EstimatedDistanceMeters:  0, // SuggestedRouteには距離情報がないため0とする
-			Theme:                    theme,
-			DisplayHighlights:        r.extractHighlights(suggestedRoute),
-			NavigationSteps:          r.convertToNavigationSteps(suggestedRoute),
-			RoutePolyline:            suggestedRoute.Polyline,
-			GeneratedStory:           r.generateStoryFromRoute(suggestedRoute, i),
-		}
-
-		// Firestore用の構造体に変換
-		firestoreData := routeProposal.ToFirestoreRouteProposal(ttlHours)
-
-		// Firestoreに保存
-		_, err := collection.Doc(proposalID).Set(ctx, firestoreData)
-		if err != nil {
-			log.Printf("❌ Failed to save route proposal %s: %v", proposalID, err)
-			return nil, fmt.Errorf("ルート提案の保存に失敗しました: %w", err)
-		}
-
-		log.Printf("✅ Route proposal saved: %s (expires in %d hours)", proposalID, ttlHours)
-		result = append(result, routeProposal)
+	// 並行保存用の構造体
+	type saveResult struct {
+		index         int
+		routeProposal *model.RouteProposal
+		err           error
 	}
 
-	return result, nil
+	resultChan := make(chan saveResult, len(proposals))
+	var wg sync.WaitGroup
+
+	// 各ルート提案を並行でFirestoreに保存
+	for i, suggestedRoute := range proposals {
+		wg.Add(1)
+		go func(idx int, route *model.SuggestedRoute) {
+			defer wg.Done()
+
+			// 一時IDを生成
+			proposalID := fmt.Sprintf("temp_prop_%s", uuid.New().String())
+
+			// SuggestedRouteをRouteProposalに変換
+			routeProposal := &model.RouteProposal{
+				ProposalID:               proposalID,
+				Title:                    titles[idx],
+				EstimatedDurationMinutes: int(route.TotalDuration.Minutes()),
+				EstimatedDistanceMeters:  0, // SuggestedRouteには距離情報がないため0とする
+				Theme:                    theme,
+				DisplayHighlights:        r.extractHighlights(route),
+				NavigationSteps:          r.convertToNavigationSteps(route),
+				RoutePolyline:            route.Polyline,
+				GeneratedStory:           stories[idx],
+			}
+
+			// Firestore用の構造体に変換
+			firestoreData := routeProposal.ToFirestoreRouteProposal(ttlHours)
+
+			// Firestoreに保存
+			_, err := collection.Doc(proposalID).Set(ctx, firestoreData)
+			if err != nil {
+				log.Printf("❌ Failed to save route proposal %s: %v", proposalID, err)
+				resultChan <- saveResult{
+					index:         idx,
+					routeProposal: nil,
+					err:           fmt.Errorf("ルート提案%d の保存に失敗しました: %w", idx+1, err),
+				}
+				return
+			}
+
+			log.Printf("✅ Route proposal saved: %s (expires in %d hours)", proposalID, ttlHours)
+			resultChan <- saveResult{
+				index:         idx,
+				routeProposal: routeProposal,
+				err:           nil,
+			}
+		}(i, suggestedRoute)
+	}
+
+	// 別のgoroutineでwaitしてチャンネルを閉じる
+	go func() {
+		wg.Wait()
+		close(resultChan)
+	}()
+
+	// 結果を収集
+	result := make([]*model.RouteProposal, len(proposals))
+	var saveErrors []error
+
+	for saveRes := range resultChan {
+		if saveRes.err != nil {
+			saveErrors = append(saveErrors, saveRes.err)
+		} else {
+			result[saveRes.index] = saveRes.routeProposal
+		}
+	}
+
+	// エラーが成功数より多かった場合、エラーメッセージをまとめて返す
+	if len(saveErrors) > len(resultChan) {
+		var errorMessages []string
+		for _, err := range saveErrors {
+			errorMessages = append(errorMessages, err.Error())
+		}
+		return nil, fmt.Errorf("大部分のルート提案の保存に失敗しました: %s", strings.Join(errorMessages, "; "))
+	}
+
+	// 成功した提案のみを返す（nilを除外）
+	var successResults []*model.RouteProposal
+	for _, proposal := range result {
+		if proposal != nil {
+			successResults = append(successResults, proposal)
+		}
+	}
+
+	log.Printf("🎉 全ルート提案の並行保存完了 (%d件)", len(successResults))
+	return successResults, nil
 }
 
 // GetRouteProposal は指定されたproposal_idのルート提案をFirestoreから取得する
@@ -126,30 +190,4 @@ func (r *FirestoreRouteProposalRepository) convertToNavigationSteps(route *model
 	}
 
 	return steps
-}
-
-// generateStoryFromRoute はルートから簡単な物語を生成する（将来的にGemini APIを使用）
-func (r *FirestoreRouteProposalRepository) generateStoryFromRoute(route *model.SuggestedRoute, index int) string {
-	if len(route.Spots) == 0 {
-		return fmt.Sprintf("素敵な散歩ルート%d", index+1)
-	}
-
-	// 簡易的な物語生成（将来的にGemini APIで置き換え）
-	firstSpot := ""
-	lastSpot := ""
-
-	for _, spot := range route.Spots {
-		if spot != nil {
-			if firstSpot == "" {
-				firstSpot = spot.Name
-			}
-			lastSpot = spot.Name
-		}
-	}
-
-	if firstSpot == lastSpot {
-		return fmt.Sprintf("%sを中心とした魅力的な散歩をお楽しみください。", firstSpot)
-	}
-
-	return fmt.Sprintf("%sから始まり、%sで終わる素晴らしい散歩の物語。", firstSpot, lastSpot)
 }
