@@ -22,7 +22,6 @@ type routeSuggestionService struct {
 	directionsProvider *maps.GoogleDirectionsProvider
 	strategies         map[string]strategy.StrategyInterface
 	poiRepo            repository.POIsRepository
-	routeBuilderHelper *RouteBuilderHelper
 }
 
 func NewRouteSuggestionService(dp *maps.GoogleDirectionsProvider, repo repository.POIsRepository) RouteSuggestionService {
@@ -37,7 +36,6 @@ func NewRouteSuggestionService(dp *maps.GoogleDirectionsProvider, repo repositor
 		directionsProvider: dp,
 		strategies:         strategies,
 		poiRepo:            repo,
-		routeBuilderHelper: NewRouteBuilderHelper(),
 	}
 }
 
@@ -171,7 +169,8 @@ func (s *routeSuggestionService) buildRoutesFromCombinations(
 		wg.Add(1)
 		go func(index int, combination []*model.POI) {
 			defer wg.Done()
-			routeName := s.routeBuilderHelper.GenerateRouteName(theme, scenario, combination, index, realtimeContext)
+			// 仮のルート名を生成（実際のタイトルはUsecaseでGemini APIにより生成される）
+			routeName := generateTemporaryRouteName(theme, scenario, combination, index)
 			// 渡された最適化関数を実行
 			route, err := optimizeRoute(ctx, routeName, userLocation, combination)
 			if err == nil {
@@ -213,7 +212,7 @@ func (s *routeSuggestionService) optimizeRoute(ctx context.Context, name string,
 	if len(validPOIs) == 2 {
 		routesToTry = [][]*model.POI{validPOIs}
 	} else {
-		routesToTry = s.routeBuilderHelper.GeneratePermutations(validPOIs)
+		routesToTry = generatePermutations(validPOIs)
 	}
 	
 	var bestRoute *model.SuggestedRoute
@@ -280,7 +279,7 @@ func (s *routeSuggestionService) optimizeRouteWithDestination(ctx context.Contex
 	if len(waypoints) == 1 {
 		routesToTry = [][]*model.POI{append(waypoints, destination)}
 	} else {
-		waypointPermutations := s.routeBuilderHelper.GeneratePermutations(waypoints)
+		waypointPermutations := generatePermutations(waypoints)
 		for _, perm := range waypointPermutations {
 			routesToTry = append(routesToTry, append(perm, destination))
 		}
