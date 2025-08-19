@@ -21,9 +21,9 @@ type RouteProposalUseCase interface {
 
 // routeProposalUseCaseImpl はRouteProposalUseCaseの実装
 type routeProposalUseCaseImpl struct {
-	routeSuggestionService service.RouteSuggestionService
-	firestoreRepo          *repoImpl.FirestoreRouteProposalRepository
-	storyGenerationRepo    repository.StoryGenerationRepository
+	routeSuggestionService    service.RouteSuggestionService
+	firestoreRepo             *repoImpl.FirestoreRouteProposalRepository
+	storyGenerationRepository repository.StoryGenerationRepository
 }
 
 // NewRouteProposalUseCase は新しいRouteProposalUseCaseインスタンスを作成
@@ -33,9 +33,9 @@ func NewRouteProposalUseCase(
 	storyRepo repository.StoryGenerationRepository,
 ) RouteProposalUseCase {
 	return &routeProposalUseCaseImpl{
-		routeSuggestionService: routeService,
-		firestoreRepo:          firestoreRepo,
-		storyGenerationRepo:    storyRepo,
+		routeSuggestionService:    routeService,
+		firestoreRepo:             firestoreRepo,
+		storyGenerationRepository: storyRepo,
 	}
 }
 
@@ -85,7 +85,7 @@ func (u *routeProposalUseCaseImpl) GenerateProposals(ctx context.Context, req *m
 		wg.Add(1)
 		go func(idx int, r *model.SuggestedRoute) {
 			defer wg.Done()
-			title, story, err := u.storyGenerationRepo.GenerateStoryWithTitle(ctx, r, req.Theme, req.RealtimeContext)
+			title, story, err := u.storyGenerationRepository.GenerateStoryWithTitle(ctx, r, req.Theme, req.RealtimeContext)
 			resultChan <- storyResult{
 				index: idx,
 				title: title,

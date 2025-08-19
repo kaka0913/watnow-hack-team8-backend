@@ -9,12 +9,12 @@ import (
 	"strings"
 )
 
-// geminiStoryRepository はGemini APIを使用してStoryGenerationRepositoryを実装
+// geminiStoryRepository はGemini APIを使用してstoryGenerationRepositoryを実装
 type geminiStoryRepository struct {
 	client *GeminiClient
 }
 
-// NewGeminiStoryRepository は新しいgeminiStoryRepositoryインスタンスを作成
+// NewGeminiStoryRepository は新しいGeminiStoryRepositoryインスタンスを作成
 func NewGeminiStoryRepository(client *GeminiClient) repository.StoryGenerationRepository {
 	return &geminiStoryRepository{
 		client: client,
@@ -23,7 +23,11 @@ func NewGeminiStoryRepository(client *GeminiClient) repository.StoryGenerationRe
 
 // GenerateStoryWithTitle は物語とタイトルを同時に生成する
 func (g *geminiStoryRepository) GenerateStoryWithTitle(ctx context.Context, route *model.SuggestedRoute, theme string, realtimeContext *model.RealtimeContext) (title, story string, err error) {
-	content, err := g.generateStoryContent(ctx, route, theme, realtimeContext)
+	prompt := g.buildStoryPrompt(route, theme, realtimeContext)
+
+	log.Printf("🤖 Gemini APIでタイトル・物語を同時生成中... (テーマ: %s)", theme)
+
+	content, err := g.client.GenerateStoryContent(ctx, prompt)
 	if err != nil {
 		log.Printf("❌ タイトル・物語同時生成に失敗: %v", err)
 		return route.Name, g.generateFallbackStory(route, theme), nil
@@ -31,20 +35,6 @@ func (g *geminiStoryRepository) GenerateStoryWithTitle(ctx context.Context, rout
 
 	log.Printf("✅ タイトル・物語同時生成完了: %s (物語: %d文字)", content.Title, len(content.Story))
 	return content.Title, content.Story, nil
-}
-
-// generateStoryContent はタイトルと物語を同時に生成する
-func (g *geminiStoryRepository) generateStoryContent(ctx context.Context, route *model.SuggestedRoute, theme string, realtimeContext *model.RealtimeContext) (*StoryContent, error) {
-	prompt := g.buildStoryPrompt(route, theme, realtimeContext)
-
-	log.Printf("🤖 Gemini APIでタイトル・物語を同時生成中... (テーマ: %s)", theme)
-
-	content, err := g.client.GenerateStoryContent(ctx, prompt)
-	if err != nil {
-		return nil, fmt.Errorf("Gemini API呼び出しエラー: %w", err)
-	}
-
-	return content, nil
 }
 
 // buildStoryPrompt はタイトルと物語の同時生成用プロンプトを構築
