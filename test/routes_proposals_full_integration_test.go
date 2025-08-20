@@ -428,28 +428,65 @@ func displayDetailedProposals(proposals []model.RouteProposal, testType string) 
 		return
 	}
 
-	// 最初のプロポーザルのみ詳細表示
-	proposal := proposals[0]
-	fmt.Printf("   📍 プロポーザル 1:\n")
-	fmt.Printf("      🆔 ID: %s\n", proposal.ProposalID)
-	fmt.Printf("      📝 タイトル: %s (%d文字)\n", proposal.Title, len(proposal.Title))
-	fmt.Printf("      ⏱️  予想時間: %d分\n", proposal.EstimatedDurationMinutes)
-	fmt.Printf("      📏 予想距離: %dm\n", proposal.EstimatedDistanceMeters)
-	fmt.Printf("      🌿 テーマ: %s\n", proposal.Theme)
-	fmt.Printf("      ✨ ハイライト数: %d\n", len(proposal.DisplayHighlights))
-	fmt.Printf("      🗺️  ナビステップ数: %d\n", len(proposal.NavigationSteps))
-	fmt.Printf("      📖 物語文字数: %d文字\n", len(proposal.GeneratedStory))
+	// 全プロポーザルを詳細表示
+	for idx, proposal := range proposals {
+		fmt.Printf("\n   📍 プロポーザル %d:\n", idx+1)
+		fmt.Printf("      🆔 ID: %s\n", proposal.ProposalID)
+		fmt.Printf("      📝 タイトル: %s\n", proposal.Title)
+		fmt.Printf("      ⏱️  予想時間: %d分\n", proposal.EstimatedDurationMinutes)
+		fmt.Printf("      📏 予想距離: %dm\n", proposal.EstimatedDistanceMeters)
+		fmt.Printf("      🌿 テーマ: %s\n", proposal.Theme)
 
-	// 物語の一部を表示
-	if len(proposal.GeneratedStory) > 200 {
-		fmt.Printf("      📖 物語抜粋: %s...\n", proposal.GeneratedStory[:200])
-	} else {
-		fmt.Printf("      📖 物語: %s\n", proposal.GeneratedStory)
+		// ハイライトの詳細表示
+		if len(proposal.DisplayHighlights) > 0 {
+			fmt.Printf("      ✨ ハイライト:\n")
+			for i, highlight := range proposal.DisplayHighlights {
+				fmt.Printf("         %d. %s\n", i+1, highlight)
+			}
+		}
+
+		// ナビゲーションステップの詳細表示（POI情報を含む）
+		if len(proposal.NavigationSteps) > 0 {
+			fmt.Printf("      🗺️  ルート詳細（全%d箇所）:\n", len(proposal.NavigationSteps))
+			for i, step := range proposal.NavigationSteps {
+				if step.Type == "poi" {
+					fmt.Printf("         � %d. %s\n", i+1, step.Name)
+					if step.POIId != "" {
+						fmt.Printf("            🆔 POI ID: %s\n", step.POIId)
+					}
+					if step.Latitude != 0 && step.Longitude != 0 {
+						fmt.Printf("            📍 位置: (%.4f, %.4f)\n", step.Latitude, step.Longitude)
+					}
+					if step.Description != "" {
+						fmt.Printf("            📝 説明: %s\n", step.Description)
+					}
+					if step.DistanceToNextMeters > 0 {
+						fmt.Printf("            🚶 次まで: %dm\n", step.DistanceToNextMeters)
+					}
+				} else if step.Type == "navigation" {
+					fmt.Printf("         🧭 %d. %s\n", i+1, step.Description)
+					if step.DistanceToNextMeters > 0 {
+						fmt.Printf("            🚶 距離: %dm\n", step.DistanceToNextMeters)
+					}
+				}
+			}
+		}
+
+		// 完全な物語の表示
+		if proposal.GeneratedStory != "" {
+			fmt.Printf("      📖 生成された物語 (%d文字):\n", len(proposal.GeneratedStory))
+			fmt.Printf("      ════════════════════════════════════════════════════════════════\n")
+			fmt.Printf("      %s\n", proposal.GeneratedStory)
+			fmt.Printf("      ════════════════════════════════════════════════════════════════\n")
+		}
+
+		// 区切り線（最後のプロポーザル以外）
+		if idx < len(proposals)-1 {
+			fmt.Printf("      ──────────────────────────────────────────────────────────────\n")
+		}
 	}
 
-	if len(proposals) > 1 {
-		fmt.Printf("   ... (他 %d プロポーザル)\n", len(proposals)-1)
-	}
+	fmt.Printf("\n   📊 プロポーザル合計: %d件\n", len(proposals))
 }
 
 func analyzePerformance(duration time.Duration, proposalCount int) {
