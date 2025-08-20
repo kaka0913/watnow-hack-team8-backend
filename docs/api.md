@@ -184,6 +184,7 @@ erDiagram
 
 ```json
 {
+  "proposal_id": "temp_prop_1a2b3c",
   "current_location": { // ユーザーの現在地
     "latitude": 35.0135,
     "longitude": 135.7672
@@ -193,17 +194,15 @@ erDiagram
     "longitude": 135.7561
   },
   "mode": "destination", // "destination" or "time_based"
-  "original_story_context": { // 物語の文脈を維持するための情報
-     "title": "黄昏の蜜蜂が紡ぐ、古き良き商店街の物語",
-     "theme": "gourmet",
+  "visited_pois": {
      "previous_pois": [
 		    { "name": "老舗和菓子店「蜜月堂」", "poi_id": "poi_unique_id_123"},
 		    { "name": "昭和レトロ喫茶「黄昏」", "poi_id": "poi_unique_id_123"}
 		 ],
   },
-   "realtime_context": {
-      "weather": "sunny",
-      "time_of_day": "afternoon"
+  "realtime_context": {
+    "weather": "sunny",
+    "time_of_day": "afternoon"
   }
 }
 ```
