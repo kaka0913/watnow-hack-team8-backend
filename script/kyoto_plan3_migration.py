@@ -317,7 +317,8 @@ def save_grid_cell(geohash):
         
         # Geohashから中心座標とポリゴンを取得
         lat, lon = pgh.decode(geohash)
-        lat_err, lon_err = pgh.decode_exact(geohash)[1]
+        exact_result = pgh.decode_exactly(geohash)
+        lat_err, lon_err = exact_result.latitude_error, exact_result.longitude_error
         
         # ポリゴンの境界を計算
         min_lat, max_lat = lat - lat_err, lat + lat_err

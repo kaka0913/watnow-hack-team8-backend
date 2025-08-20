@@ -19,9 +19,10 @@ erDiagram
         VARCHAR id PK "ユニークなスポットID"
         VARCHAR name "スポット名"
         GEOMETRY location "位置情報"
-        VARCHAR category "カテゴリ（単一文字列）"
+        JSONB categories "カテゴリ配列"
         INTEGER grid_cell_id FK "グリッドセルID"
         DOUBLE rate "評価値"
+        VARCHAR url "詳細情報URL（NULLABLE）"
     }
 
     grid_cells {
@@ -36,7 +37,7 @@ erDiagram
 ### **インデックス**
 
 - `pois`テーブルの外部キー (`grid_cell_id`)
-- `pois`テーブルの`location`（GiSTインデックス）、`category`（BTREEインデックス）
+- `pois`テーブルの`location`（GiSTインデックス）、`categories`（GINインデックス）
 - `grid_cells`テーブルの`geometry`（GiSTインデックス）、`geohash`（BTREEインデックス）
 
 ## Firestoreのデータ構造
@@ -58,12 +59,15 @@ erDiagram
 - **`location` (ジオポイント):**
     - **内容:** スポットの緯度経度。Firestoreの`GeoPoint`型を使います。
     - **理由:** ルート計算を行う上で、**位置情報**は絶対に欠かせません。
-- **`category` (文字列):**
-    - **内容:** メインカテゴリ（例: `"cafe"`, `"park"`, `"art_gallery"`）。
+- **`categories` (配列):**
+    - **内容:** カテゴリ配列（例: `["cafe", "bakery"]`, `["park"]`, `["art_gallery"]`）。
     - **理由:** 「カフェに寄りたい」といったユーザーの希望に応じて、**スポットをフィルタリングする**ために使います。
 - **`rating` (数値):**
     - **内容:** スポットの評価（Googleレビューの評価など、1.0〜5.0）。
     - **理由:** 寄り道候補が多数ある場合に、「評価4.0以上のスポットだけを対象にする」など、**提案の質を上げるための指標**になります。
+- **`url` (文字列・NULLABLE):**
+    - **内容:** スポットの詳細情報へのURL（外部サイトへのリンク）。
+    - **理由:** ユーザーがスポットの詳細情報を確認したい場合に使用。既存データでは未設定の場合があります。
 
 ```json
 [
@@ -71,15 +75,17 @@ erDiagram
     "id": "ChIJN1t_tDeuEmsRUsoyG83frY4",
     "name": "スターバックスコーヒー 八重洲地下街店",
     "location": { "latitude": 35.681, "longitude": 139.768 },
-    "category": "cafe",
-    "rating": 3.8
+    "categories": ["cafe"],
+    "rating": 3.8,
+    "url": "https://store.starbucks.co.jp/detail-1234/"
   },
   {
     "id": "ChIJC_zAsDGtEmsR6I234567890",
     "name": "日比谷公園",
     "location": { "latitude": 35.675, "longitude": 139.758 },
-    "category": "park",
-    "rating": 4.4
+    "categories": ["park"],
+    "rating": 4.4,
+    "url": null
   }
 ]
 ```

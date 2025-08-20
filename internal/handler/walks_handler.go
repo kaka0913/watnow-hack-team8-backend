@@ -5,21 +5,21 @@ import (
 	"strconv"
 	"strings"
 
-	"Team8-App/internal/service"
-	"Team8-App/model"
+	"Team8-App/internal/usecase"
+	"Team8-App/internal/domain/model"
 
 	"github.com/gin-gonic/gin"
 )
 
 // WalksHandler 散歩記録に関するHTTPハンドラー
 type WalksHandler struct {
-	walksService service.WalksService
+	walksUsecase usecase.WalksUsecase
 }
 
 // NewWalksHandler WalksHandlerの新しいインスタンスを作成
-func NewWalksHandler(walksService service.WalksService) *WalksHandler {
+func NewWalksHandler(walksUsecase usecase.WalksUsecase) *WalksHandler {
 	return &WalksHandler{
-		walksService: walksService,
+		walksUsecase: walksUsecase,
 	}
 }
 
@@ -36,8 +36,8 @@ func (h *WalksHandler) CreateWalk(c *gin.Context) {
 		return
 	}
 
-	// サービス層で処理
-	response, err := h.walksService.CreateWalk(c.Request.Context(), &req)
+	// ユースケース層で処理
+	response, err := h.walksUsecase.CreateWalk(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "internal_error",
@@ -108,8 +108,8 @@ func (h *WalksHandler) GetWalksByBoundingBox(c *gin.Context) {
 		return
 	}
 
-	// サービス層で処理
-	walks, err := h.walksService.GetWalksByBoundingBox(c.Request.Context(), minLng, minLat, maxLng, maxLat)
+	// ユースケース層で処理
+	walks, err := h.walksUsecase.GetWalksByBoundingBox(c.Request.Context(), minLng, minLat, maxLng, maxLat)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "internal_error",
@@ -138,8 +138,8 @@ func (h *WalksHandler) GetWalkDetail(c *gin.Context) {
 		return
 	}
 
-	// サービス層で処理
-	walkDetail, err := h.walksService.GetWalkDetail(c.Request.Context(), walkID)
+	// ユースケース層で処理
+	walkDetail, err := h.walksUsecase.GetWalkDetail(c.Request.Context(), walkID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "internal_error",

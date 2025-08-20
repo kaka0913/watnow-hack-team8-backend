@@ -6,6 +6,8 @@
 # バイナリファイル
 bin/
 *.exe
+/main
+*.out
 
 # OS固有のファイル
 .DS_Store
@@ -19,6 +21,10 @@ Thumbs.db
 
 # 環境変数ファイル
 .env
+
+# Google Cloud サービスアカウントキー
+keys/
+*.json
 
 # Terraformファイル
 *.tfvars

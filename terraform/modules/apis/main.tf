@@ -2,7 +2,10 @@
 resource "google_project_service" "apis" {
   for_each = toset([
     "run.googleapis.com",
-    "cloudtasks.googleapis.com"
+    "cloudtasks.googleapis.com",
+    "iam.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
+    "firestore.googleapis.com"
   ])
   project  = var.project_id
   service  = each.value

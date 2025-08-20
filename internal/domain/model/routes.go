@@ -1,5 +1,19 @@
 package model
 
+import "time"
+
+type SuggestedRoute struct {
+	Name          string
+	Spots         []*POI
+	TotalDuration time.Duration
+	Polyline      string
+}
+
+type RouteDetails struct {
+	TotalDuration time.Duration
+	Polyline      string
+}
+
 type RouteProposalRequest struct {
 	StartLocation       *Location        `json:"start_location" validate:"required"`
 	DestinationLocation *Location        `json:"destination_location"` // null可（お散歩モード）
@@ -28,6 +42,46 @@ type RouteProposal struct {
 	NavigationSteps          []NavigationStep `json:"navigation_steps"`           // ナビゲーションステップ
 	RoutePolyline            string           `json:"route_polyline"`             // ルートポリライン
 	GeneratedStory           string           `json:"generated_story"`            // 生成された物語
+}
+
+type FirestoreRouteProposal struct {
+	Title                    string           `firestore:"title"`
+	EstimatedDurationMinutes int              `firestore:"estimated_duration_minutes"`
+	EstimatedDistanceMeters  int              `firestore:"estimated_distance_meters"`
+	Theme                    string           `firestore:"theme"`
+	DisplayHighlights        []string         `firestore:"display_highlights"`
+	NavigationSteps          []NavigationStep `firestore:"navigation_steps"`
+	RoutePolyline            string           `firestore:"route_polyline"`
+	GeneratedStory           string           `firestore:"generated_story"`
+	ExpireAt                 time.Time        `firestore:"expireAt"`
+}
+
+func (rp *RouteProposal) ToFirestoreRouteProposal(ttlHours int) *FirestoreRouteProposal {
+	return &FirestoreRouteProposal{
+		Title:                    rp.Title,
+		EstimatedDurationMinutes: rp.EstimatedDurationMinutes,
+		EstimatedDistanceMeters:  rp.EstimatedDistanceMeters,
+		Theme:                    rp.Theme,
+		DisplayHighlights:        rp.DisplayHighlights,
+		NavigationSteps:          rp.NavigationSteps,
+		RoutePolyline:            rp.RoutePolyline,
+		GeneratedStory:           rp.GeneratedStory,
+		ExpireAt:                 time.Now().Add(time.Duration(ttlHours) * time.Hour),
+	}
+}
+
+func (frp *FirestoreRouteProposal) ToRouteProposal(proposalID string) *RouteProposal {
+	return &RouteProposal{
+		ProposalID:               proposalID,
+		Title:                    frp.Title,
+		EstimatedDurationMinutes: frp.EstimatedDurationMinutes,
+		EstimatedDistanceMeters:  frp.EstimatedDistanceMeters,
+		Theme:                    frp.Theme,
+		DisplayHighlights:        frp.DisplayHighlights,
+		NavigationSteps:          frp.NavigationSteps,
+		RoutePolyline:            frp.RoutePolyline,
+		GeneratedStory:           frp.GeneratedStory,
+	}
 }
 
 type NavigationStep struct {

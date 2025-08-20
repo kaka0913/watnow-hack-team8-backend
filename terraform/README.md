@@ -29,7 +29,8 @@ terraform/
 │   ├── apis/                  # Google Cloud API有効化
 │   ├── cloud-run/             # Cloud Runサービス
 │   ├── cloud-tasks/           # Cloud Tasksキュー
-│   └── service-account/       # サービスアカウント管理
+│   ├── service-account/       # サービスアカウント管理
+│   └── firestore-service-account/  # Firestore アクセス用SA
 └── environments/              # 環境別設定
     └── dev/                   # 開発環境
         ├── main.tf            # メインTerraform設定
@@ -44,6 +45,7 @@ terraform/
 - **Cloud Run**: API サーバーと物語生成サーバー
 - **Cloud Tasks**: 非同期物語生成処理
 - **Service Accounts**: 各サービス用の権限管理
+- **Firestore**: befree データベースアクセス用サービスアカウント
 - **IAM**: 適切な権限設定
 
 ### 外部サービス
@@ -88,6 +90,34 @@ terraform plan
 
 # インフラストラクチャの作成
 terraform apply
+```
+
+### 4. Firestore サービスアカウントの作成
+
+befree Firestore データベースへのアクセス用サービスアカウントを作成します。
+
+```bash
+# 自動デプロイスクリプトを使用
+./deploy-firestore-service-account.sh
+
+# または個別に実行
+cd environments/dev
+terraform apply -target=module.firestore_service_account
+```
+
+#### 生成されるリソース
+
+- **サービスアカウント**: `befree-firestore-access@{project-id}.iam.gserviceaccount.com`
+- **権限**: 
+  - `roles/datastore.user` (Firestore読み書き)
+  - `roles/firebase.adminServiceAgent` (Firebase Admin SDK)
+- **JSONキー**: `./keys/befree-firestore-key.json`
+
+#### 環境変数設定
+
+```bash
+export FIRESTORE_PROJECT_ID="your-project-id"
+export GOOGLE_APPLICATION_CREDENTIALS="./keys/befree-firestore-key.json"
 ```
 
 ### 必須変数
