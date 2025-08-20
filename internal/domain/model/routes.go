@@ -95,33 +95,45 @@ type NavigationStep struct {
 }
 
 type RouteRecalculateRequest struct {
-	CurrentLocation      *Location             `json:"current_location" validate:"required"`
-	DestinationLocation  *Location             `json:"destination_location"` // null可
-	Mode                 string                `json:"mode" validate:"required,oneof=destination time_based"`
-	OriginalStoryContext *OriginalStoryContext `json:"original_story_context" validate:"required"`
-	RealtimeContext      *RealtimeContext      `json:"realtime_context"`
+	ProposalID           string               `json:"proposal_id" validate:"required"`           // 元の提案ID
+	CurrentLocation      *Location            `json:"current_location" validate:"required"`      // ユーザーの現在地
+	DestinationLocation  *Location            `json:"destination_location"`                      // 目的地（null可）
+	Mode                 string               `json:"mode" validate:"required,oneof=destination time_based"` // モード
+	VisitedPOIs          *VisitedPOIsContext  `json:"visited_pois" validate:"required"`          // 訪問済みPOI情報
+	RealtimeContext      *RealtimeContext     `json:"realtime_context"`                          // リアルタイム情報
 }
 
-type OriginalStoryContext struct {
-	Title        string        `json:"title"`
-	Theme        string        `json:"theme"`
-	PreviousPOIs []PreviousPOI `json:"previous_pois"`
+// VisitedPOIsContext は訪問済みPOI情報を格納
+type VisitedPOIsContext struct {
+	PreviousPOIs []PreviousPOI `json:"previous_pois" validate:"required"` // 訪問済みPOIリスト
 }
 
+// PreviousPOI は訪問済みPOIの情報
 type PreviousPOI struct {
-	Name  string `json:"name"`
-	POIId string `json:"poi_id"`
+	Name  string `json:"name" validate:"required"`   // POI名
+	POIId string `json:"poi_id" validate:"required"` // POI ID
 }
 
+// RouteRecalculateResponse はルート再計算のレスポンス
 type RouteRecalculateResponse struct {
 	UpdatedRoute *UpdatedRoute `json:"updated_route"`
 }
 
+// UpdatedRoute は再計算された新しいルート情報
 type UpdatedRoute struct {
-	Title                    string   `json:"title"`
-	EstimatedDurationMinutes int      `json:"estimated_duration_minutes"`
-	EstimatedDistanceMeters  int      `json:"estimated_distance_meters"`
-	Highlights               []string `json:"highlights"`
-	RoutePolyline            string   `json:"route_polyline"`
-	GeneratedStory           string   `json:"generated_story"`
+	Title                    string           `json:"title"`                        // 更新された物語タイトル
+	EstimatedDurationMinutes int              `json:"estimated_duration_minutes"`   // 予想時間
+	EstimatedDistanceMeters  int              `json:"estimated_distance_meters"`    // 予想距離
+	Highlights               []string         `json:"highlights"`                   // 新しいハイライト
+	NavigationSteps          []NavigationStep `json:"navigation_steps"`             // 更新されたナビゲーションステップ
+	RoutePolyline            string           `json:"route_polyline"`               // ルートポリライン
+	GeneratedStory           string           `json:"generated_story"`              // 更新された物語
+}
+
+// RouteRecalculateContext は再計算処理で使用する内部コンテキスト
+type RouteRecalculateContext struct {
+	OriginalProposal  *RouteProposal    // Firestoreから取得した元の提案
+	RemainingPOIs     []*POI            // 未訪問のPOIリスト
+	NewDiscoveryPOI   *POI              // 新たに発見されたPOI
+	UpdatedCombination []*POI           // 更新された経由地リスト
 }
