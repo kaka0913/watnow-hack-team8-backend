@@ -87,7 +87,10 @@ func main() {
 	routeSuggestionService := service.NewRouteSuggestionService(directionsProvider, poiRepo)
 	firestoreRepo := repository.NewFirestoreRouteProposalRepository(firestoreClient.GetClient())
 	routeProposalUseCase := usecase.NewRouteProposalUseCase(routeSuggestionService, firestoreRepo, storyGenerationRepo)
-	routeProposalHandler := handler.NewRouteProposalHandler(routeProposalUseCase)
+	
+	routeRecalculateService := service.NewRouteRecalculateService(directionsProvider, poiRepo)
+	routeRecalculateUseCase := usecase.NewRouteRecalculateUseCase(routeRecalculateService, firestoreRepo, storyGenerationRepo)
+	routeProposalHandler := handler.NewRouteProposalHandler(routeProposalUseCase, routeRecalculateUseCase)
 
 	// Ginルーターのセットアップ
 	r := gin.Default()
@@ -110,8 +113,9 @@ func main() {
 	// Route Proposals API エンドポイント
 	routes := r.Group("/routes")
 	{
-		routes.POST("/proposals", routeProposalHandler.PostRouteProposals)  // POST /routes/proposals
-		routes.GET("/proposals/:id", routeProposalHandler.GetRouteProposal) // GET /routes/proposals/:id
+		routes.POST("/proposals", routeProposalHandler.PostRouteProposals)    // POST /routes/proposals
+		routes.GET("/proposals/:id", routeProposalHandler.GetRouteProposal)   // GET /routes/proposals/:id
+		routes.POST("/recalculate", routeProposalHandler.PostRouteRecalculate) // POST /routes/recalculate
 	}
 
 	fmt.Println("🚀 Team8-App server starting on :8080...")
