@@ -20,10 +20,11 @@ type RouteRecalculateService interface {
 }
 
 type routeRecalculateService struct {
-	directionsProvider *maps.GoogleDirectionsProvider
-	strategies         map[string]strategy.StrategyInterface
-	poiRepo            repository.POIsRepository
-	poiSearchHelper    *helper.POISearchHelper
+	directionsProvider  *maps.GoogleDirectionsProvider
+	strategies          map[string]strategy.StrategyInterface
+	poiRepo             repository.POIsRepository
+	poiSearchHelper     *helper.POISearchHelper
+	parallelOptimizer   *ParallelRouteOptimizer
 }
 
 // NewRouteRecalculateService は新しいRouteRecalculateServiceインスタンスを作成
@@ -35,11 +36,13 @@ func NewRouteRecalculateService(
 	strategies := map[string]strategy.StrategyInterface{
 		model.ThemeNature: strategy.NewNatureStrategy(repo),
 	}
+	parallelOptimizer := NewParallelRouteOptimizer(dp)
 	return &routeRecalculateService{
 		directionsProvider: dp,
 		strategies:         strategies,
 		poiRepo:            repo,
 		poiSearchHelper:    helper.NewPOISearchHelper(repo),
+		parallelOptimizer:  parallelOptimizer,
 	}
 }
 
@@ -358,41 +361,9 @@ func (s *routeRecalculateService) optimizeRoute(ctx context.Context, name string
 	} else {
 		routesToTry = s.generatePermutations(validPOIs)
 	}
-	
-	var bestRoute *model.SuggestedRoute
-	var shortestDuration = 24 * 60 * 60 // 24時間を秒で表現
 
-	for _, route := range routesToTry {
-		waypointLatLngs := make([]model.LatLng, len(route))
-		for i, poi := range route {
-			waypointLatLngs[i] = poi.ToLatLng()
-		}
-		routeDetails, err := s.directionsProvider.GetWalkingRoute(ctx, userLocation, waypointLatLngs...)
-		if err != nil {
-			continue
-		}
-
-		// 所要時間制限チェック（2時間以内）
-		maxDurationMinutes := 120
-		if int(routeDetails.TotalDuration.Minutes()) > maxDurationMinutes {
-			continue
-		}
-
-		if int(routeDetails.TotalDuration.Seconds()) < shortestDuration {
-			shortestDuration = int(routeDetails.TotalDuration.Seconds())
-			bestRoute = &model.SuggestedRoute{
-				Name:          fmt.Sprintf("%s (%d分)", name, int(routeDetails.TotalDuration.Minutes())),
-				Spots:         route,
-				TotalDuration: routeDetails.TotalDuration,
-				Polyline:      routeDetails.Polyline,
-			}
-		}
-	}
-
-	if bestRoute == nil {
-		return nil, errors.New("制限時間内でルート計算に成功した順列がありませんでした")
-	}
-	return bestRoute, nil
+	// 並行最適化を使用
+	return s.parallelOptimizer.OptimizeRouteParallel(ctx, name, userLocation, routesToTry)
 }
 
 // optimizeRouteWithDestination は目的地ありのルートを最適化する
@@ -414,57 +385,32 @@ func (s *routeRecalculateService) optimizeRouteWithDestination(ctx context.Conte
 		return nil, errors.New("有効なスポットが不足しています")
 	}
 	
-	// 最後のPOIを目的地として扱う
-	destination := validPOIs[len(validPOIs)-1]
-	waypoints := validPOIs[:len(validPOIs)-1]
-	
-	// 経由地が0の場合は目的地のみ、1つ以上の場合は順列生成
+	// 最後のPOIを目的地として固定し、それ以外の順列を生成
 	var routesToTry [][]*model.POI
-	if len(waypoints) == 0 {
-		routesToTry = [][]*model.POI{{destination}}
-	} else if len(waypoints) == 1 {
-		routesToTry = [][]*model.POI{append(waypoints, destination)}
+	if len(validPOIs) == 1 {
+		// 1箇所の場合は目的地のみ
+		routesToTry = [][]*model.POI{validPOIs}
 	} else {
-		waypointPermutations := s.generatePermutations(waypoints)
-		for _, perm := range waypointPermutations {
-			routesToTry = append(routesToTry, append(perm, destination))
-		}
-	}
-	
-	var bestRoute *model.SuggestedRoute
-	var shortestDuration = 24 * 60 * 60 // 24時間を秒で表現
-
-	for _, route := range routesToTry {
-		waypointLatLngs := make([]model.LatLng, len(route))
-		for i, poi := range route {
-			waypointLatLngs[i] = poi.ToLatLng()
-		}
-		routeDetails, err := s.directionsProvider.GetWalkingRoute(ctx, userLocation, waypointLatLngs...)
-		if err != nil {
-			continue
-		}
-
-		// 所要時間制限チェック（2時間以内）
-		maxDurationMinutes := 120
-		if int(routeDetails.TotalDuration.Minutes()) > maxDurationMinutes {
-			continue
-		}
-
-		if int(routeDetails.TotalDuration.Seconds()) < shortestDuration {
-			shortestDuration = int(routeDetails.TotalDuration.Seconds())
-			bestRoute = &model.SuggestedRoute{
-				Name:          fmt.Sprintf("%s (%d分)", name, int(routeDetails.TotalDuration.Minutes())),
-				Spots:         route,
-				TotalDuration: routeDetails.TotalDuration,
-				Polyline:      routeDetails.Polyline,
+		// 最後のPOI（目的地）以外の順列を生成
+		destinationPOI := validPOIs[len(validPOIs)-1]
+		intermediatePOIs := validPOIs[:len(validPOIs)-1]
+		
+		if len(intermediatePOIs) == 0 {
+			routesToTry = [][]*model.POI{{destinationPOI}}
+		} else {
+			intermediatePermutations := s.generatePermutations(intermediatePOIs)
+			routesToTry = make([][]*model.POI, len(intermediatePermutations))
+			for i, perm := range intermediatePermutations {
+				route := make([]*model.POI, len(perm)+1)
+				copy(route, perm)
+				route[len(route)-1] = destinationPOI
+				routesToTry[i] = route
 			}
 		}
 	}
-
-	if bestRoute == nil {
-		return nil, errors.New("制限時間内で目的地へのルート計算に成功した順列がありませんでした")
-	}
-	return bestRoute, nil
+	
+	// 並行最適化を使用
+	return s.parallelOptimizer.OptimizeRouteParallel(ctx, name, userLocation, routesToTry)
 }
 
 //------------------------------------------------------------------------------
