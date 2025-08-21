@@ -118,6 +118,12 @@ func main() {
 		routes.POST("/recalculate", routeProposalHandler.PostRouteRecalculate) // POST /routes/recalculate
 	}
 
-	fmt.Println("🚀 Team8-App server starting on :8080...")
-	log.Fatal(r.Run(":8080"))
+	// Cloud RunのPORT環境変数を取得（デフォルト8080）
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	
+	fmt.Printf("🚀 Team8-App server starting on :%s...\n", port)
+	log.Fatal(r.Run(":" + port))
 }
