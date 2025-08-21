@@ -71,3 +71,25 @@ func (s *GourmetStrategy) FindCombinationsWithDestination(ctx context.Context, s
 	combination := []*model.POI{candidates[0], candidates[1], destinationPOIs[0]}
 	return [][]*model.POI{combination}, nil
 }
+
+// ExploreNewSpots はグルメテーマで新しいスポットを探索します
+func (s *GourmetStrategy) ExploreNewSpots(ctx context.Context, location model.LatLng) ([]*model.POI, error) {
+	// グルメテーマのカテゴリで周辺のPOIを検索
+	pois, err := s.poiRepo.FindNearbyByCategories(ctx, location, model.GetGourmetCategories(), 1500, 8)
+	if err != nil {
+		return nil, fmt.Errorf("グルメテーマのPOI検索に失敗: %w", err)
+	}
+
+	// 最大3つまでの高評価POIを選択
+	var result []*model.POI
+	for i, poi := range pois {
+		if i >= 3 {
+			break
+		}
+		if poi.Rate >= 3.0 {
+			result = append(result, poi)
+		}
+	}
+
+	return result, nil
+}

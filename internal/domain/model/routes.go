@@ -132,8 +132,8 @@ type UpdatedRoute struct {
 
 // RouteRecalculateContext は再計算処理で使用する内部コンテキスト
 type RouteRecalculateContext struct {
-	OriginalProposal  *RouteProposal    // Firestoreから取得した元の提案
-	RemainingPOIs     []*POI            // 未訪問のPOIリスト
-	NewDiscoveryPOI   *POI              // 新たに発見されたPOI
-	UpdatedCombination []*POI           // 更新された経由地リスト
+	OriginalProposal   *RouteProposal    // Firestoreから取得した元の提案
+	RemainingPOIs      []*POI            // 未訪問のPOIリスト
+	NewDiscoveryPOIs   []*POI            // 新たに発見されたPOIリスト
+	UpdatedCombination []*POI            // 更新された経由地リスト
 }

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 )
 
 // RouteRecalculateService はルート再計算のドメインサービス
@@ -73,11 +74,11 @@ func (s *routeRecalculateService) RecalculateRoute(ctx context.Context, req *mod
 	recalcContext.RemainingPOIs = remainingPOIs
 
 	// Step 3: 新しい中継スポットを探索
-	newDiscovery, err := s.exploreNewSpot(ctx, req.CurrentLocation, remainingPOIs, originalProposal.Theme)
+	newDiscoveries, err := s.exploreNewSpot(ctx, req.CurrentLocation, remainingPOIs, originalProposal.Theme, originalProposal)
 	if err != nil {
 		return nil, fmt.Errorf("新しいスポット探索に失敗: %w", err)
 	}
-	recalcContext.NewDiscoveryPOI = newDiscovery
+	recalcContext.NewDiscoveryPOIs = newDiscoveries
 
 	// Step 4: 新しいルートを生成
 	updatedRoute, err := s.generateNewRoute(ctx, req.CurrentLocation, req.DestinationLocation, recalcContext)
@@ -137,11 +138,41 @@ func (s *routeRecalculateService) identifyRemainingPOIs(originalProposal *model.
 }
 
 // exploreNewSpot は新しい中継スポットを探索
-func (s *routeRecalculateService) exploreNewSpot(ctx context.Context, currentLocation *model.Location, remainingPOIs []*model.POI, theme string) (*model.POI, error) {
+func (s *routeRecalculateService) exploreNewSpot(ctx context.Context, currentLocation *model.Location, remainingPOIs []*model.POI, theme string, originalProposal *model.RouteProposal) ([]*model.POI, error) {
 	log.Printf("🔍 新しいスポット探索中...")
 
 	if len(remainingPOIs) == 0 {
 		return nil, errors.New("未訪問POIがないため新しいスポットを探索できません")
+	}
+
+	// 元の提案の総物件数と時間を取得
+	originalTotalSpots := len(originalProposal.DisplayHighlights)
+	originalDurationMinutes := originalProposal.EstimatedDurationMinutes
+	currentVisitedSpots := originalTotalSpots - len(remainingPOIs) // 既に訪問した物件数
+	
+	// 物件数ベースの計算
+	neededNewSpots := originalTotalSpots - currentVisitedSpots - len(remainingPOIs) // 追加で必要な物件数
+	
+	// 時間制約を考慮した調整
+	// 元の提案が90分以下の場合は最大2件、120分以下の場合は最大3件まで
+	maxNewSpots := 1
+	if originalDurationMinutes <= 90 {
+		maxNewSpots = 2
+	} else if originalDurationMinutes <= 120 {
+		maxNewSpots = 3
+	}
+	
+	log.Printf("📊 物件数調整: 元の総数=%d, 元の時間=%d分, 現在の訪問済み=%d, 残り=%d, 追加必要=%d, 最大追加=%d", 
+		originalTotalSpots, originalDurationMinutes, currentVisitedSpots, len(remainingPOIs), neededNewSpots, maxNewSpots)
+
+	// 負の値になる場合は最低1件追加
+	if neededNewSpots <= 0 {
+		neededNewSpots = 1
+	}
+	
+	// 時間制約を考慮して調整
+	if neededNewSpots > maxNewSpots {
+		neededNewSpots = maxNewSpots
 	}
 
 	// 探索エリアを決定（現在地と次のPOIの間）
@@ -151,28 +182,22 @@ func (s *routeRecalculateService) exploreNewSpot(ctx context.Context, currentLoc
 	}
 	nextPOI := remainingPOIs[0] // 最初の未訪問POI
 	nextLatLng := nextPOI.ToLatLng()
-
-	// 自然テーマのカテゴリで探索
-	categories := model.GetNatureCategories()
-	
 	// 中間地点を計算
 	midLatLng := model.LatLng{
 		Lat: (currentLatLng.Lat + nextLatLng.Lat) / 2,
 		Lng: (currentLatLng.Lng + nextLatLng.Lng) / 2,
 	}
 
-	// 中間地点周辺でPOIを探索
-	candidates, err := s.poiRepo.FindNearbyByCategories(ctx, midLatLng, categories, 1000, 10)
-	if err != nil {
-		return nil, fmt.Errorf("新しいPOI探索に失敗: %w", err)
+	// テーマに対応するStrategyを取得し、新しいスポットを探索
+	strategy, exists := s.strategies[theme]
+	if !exists {
+		return nil, fmt.Errorf("対応していないテーマです: %s", theme)
 	}
 
-	if len(candidates) == 0 {
-		// より広い範囲で再検索
-		candidates, err = s.poiRepo.FindNearbyByCategories(ctx, midLatLng, []string{"店舗", "観光名所"}, 2000, 15)
-		if err != nil {
-			return nil, fmt.Errorf("広範囲POI探索に失敗: %w", err)
-		}
+	// Strategyに新しいスポットの探索を委譲
+	candidates, err := strategy.ExploreNewSpots(ctx, midLatLng)
+	if err != nil {
+		return nil, fmt.Errorf("新しいPOI探索に失敗: %w", err)
 	}
 
 	// 既存のPOIを除外
@@ -194,11 +219,20 @@ func (s *routeRecalculateService) exploreNewSpot(ctx context.Context, currentLoc
 		return nil, errors.New("新しい発見スポットが見つかりませんでした")
 	}
 
-	// 評価の高いPOIを選択
-	newDiscovery := helper.FindHighestRated(filteredCandidates)
-	log.Printf("✨ 新しい発見: %s", newDiscovery.Name)
+	// 必要な数だけ新しいスポットを選択
+	var selectedSpots []*model.POI
+	for i := 0; i < neededNewSpots && i < len(filteredCandidates); i++ {
+		selectedSpots = append(selectedSpots, filteredCandidates[i])
+	}
 
-	return newDiscovery, nil
+	if len(selectedSpots) > 0 {
+		log.Printf("✨ 新しい発見: %d件の物件を追加", len(selectedSpots))
+		for i, spot := range selectedSpots {
+			log.Printf("   %d. %s", i+1, spot.Name)
+		}
+	}
+
+	return selectedSpots, nil
 }
 
 // generateNewRoute は新しいルートを生成
@@ -208,9 +242,9 @@ func (s *routeRecalculateService) generateNewRoute(ctx context.Context, currentL
 	// 新しい経由地リストを作成
 	var newCombination []*model.POI
 	
-	// 新しい発見を最初に追加
-	if recalcContext.NewDiscoveryPOI != nil {
-		newCombination = append(newCombination, recalcContext.NewDiscoveryPOI)
+	// 新しい発見されたPOIを最初に追加
+	if len(recalcContext.NewDiscoveryPOIs) > 0 {
+		newCombination = append(newCombination, recalcContext.NewDiscoveryPOIs...)
 	}
 	
 	// 残りの未訪問POIを追加
@@ -338,8 +372,8 @@ func (s *routeRecalculateService) optimizeRoute(ctx context.Context, name string
 			continue
 		}
 
-		// 所要時間制限チェック（1時間30分以内）
-		maxDurationMinutes := 90
+		// 所要時間制限チェック（2時間以内）
+		maxDurationMinutes := 120
 		if int(routeDetails.TotalDuration.Minutes()) > maxDurationMinutes {
 			continue
 		}
@@ -410,8 +444,8 @@ func (s *routeRecalculateService) optimizeRouteWithDestination(ctx context.Conte
 			continue
 		}
 
-		// 所要時間制限チェック（1時間30分以内）
-		maxDurationMinutes := 90
+		// 所要時間制限チェック（2時間以内）
+		maxDurationMinutes := 120
 		if int(routeDetails.TotalDuration.Minutes()) > maxDurationMinutes {
 			continue
 		}
@@ -460,16 +494,55 @@ func (s *routeRecalculateService) generatePermutations(pois []*model.POI) [][]*m
 	return result
 }
 
-// calculateDistanceToNext は次のPOIまでの距離を計算する（仮実装）
+// calculateDistanceToNext は次のPOIまでの距離を計算する
 func (s *routeRecalculateService) calculateDistanceToNext(spots []*model.POI, currentIndex int) int {
-	// 仮の実装：固定値を返す
-	// 実際はGoogleMapsAPIやGeographyライブラリを使用して正確な距離を計算
-	return 200
+	if currentIndex >= len(spots)-1 {
+		return 0 // 最後のスポットの場合
+	}
+	
+	current := spots[currentIndex].ToLatLng()
+	next := spots[currentIndex+1].ToLatLng()
+	
+	// Haversine公式を使用して距離を計算
+	return s.calculateHaversineDistance(current, next)
 }
 
-// calculateTotalDistance は総距離を計算する（仮実装）
+// calculateTotalDistance は総距離を計算する
 func (s *routeRecalculateService) calculateTotalDistance(spots []*model.POI) int {
-	// 仮の実装：POI数 × 平均距離
-	// 実際はより正確な計算が必要
-	return len(spots) * 500
+	if len(spots) <= 1 {
+		return 0
+	}
+	
+	totalDistance := 0
+	for i := 0; i < len(spots)-1; i++ {
+		current := spots[i].ToLatLng()
+		next := spots[i+1].ToLatLng()
+		totalDistance += s.calculateHaversineDistance(current, next)
+	}
+	
+	return totalDistance
+}
+
+// calculateHaversineDistance はHaversine公式を使用して2点間の距離をメートルで計算
+func (s *routeRecalculateService) calculateHaversineDistance(point1, point2 model.LatLng) int {
+	const earthRadius = 6371000 // 地球の半径（メートル）
+	
+	// 度をラジアンに変換
+	lat1Rad := point1.Lat * (3.14159265359 / 180)
+	lon1Rad := point1.Lng * (3.14159265359 / 180)
+	lat2Rad := point2.Lat * (3.14159265359 / 180)
+	lon2Rad := point2.Lng * (3.14159265359 / 180)
+	
+	// 差分を計算
+	dLat := lat2Rad - lat1Rad
+	dLon := lon2Rad - lon1Rad
+	
+	// Haversine公式
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) + 
+		 math.Cos(lat1Rad)*math.Cos(lat2Rad)*
+		 math.Sin(dLon/2)*math.Sin(dLon/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	
+	distance := earthRadius * c
+	return int(distance)
 }

@@ -94,11 +94,7 @@ func (h *RouteProposalHandler) validateRecalculateRequest(req *model.RouteRecalc
 		return &ValidationError{Field: "visited_pois", Message: "訪問済みPOI情報は必須です"}
 	}
 
-	// 訪問済みPOIリストの検証
-	if len(req.VisitedPOIs.PreviousPOIs) == 0 {
-		return &ValidationError{Field: "visited_pois.previous_pois", Message: "訪問済みPOIが1つも指定されていません"}
-	}
-
+	// 訪問済みPOIリストの検証（空のリストは許可）
 	for i, poi := range req.VisitedPOIs.PreviousPOIs {
 		if poi.Name == "" {
 			return &ValidationError{Field: fmt.Sprintf("visited_pois.previous_pois[%d].name", i), Message: "POI名は必須です"}
