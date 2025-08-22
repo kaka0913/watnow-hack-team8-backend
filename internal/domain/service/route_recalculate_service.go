@@ -153,11 +153,11 @@ func (s *routeRecalculateService) exploreNewSpot(ctx context.Context, currentLoc
 	originalDurationMinutes := originalProposal.EstimatedDurationMinutes
 	currentVisitedSpots := originalTotalSpots - len(remainingPOIs) // 既に訪問した物件数
 	
-	// 物件数ベースの計算
-	neededNewSpots := originalTotalSpots - currentVisitedSpots - len(remainingPOIs) // 追加で必要な物件数
+	// 新しく探索する物件数を決定
+	// 元の物件数を基準に、時間制約と探索効率を考慮して決定
+	var neededNewSpots int
 	
-	// 時間制約を考慮した調整
-	// 元の提案が90分以下の場合は最大2件、120分以下の場合は最大3件まで
+	// 時間制約を考慮した最大追加物件数
 	maxNewSpots := 1
 	if originalDurationMinutes <= 90 {
 		maxNewSpots = 2
@@ -165,18 +165,22 @@ func (s *routeRecalculateService) exploreNewSpot(ctx context.Context, currentLoc
 		maxNewSpots = 3
 	}
 	
-	log.Printf("📊 物件数調整: 元の総数=%d, 元の時間=%d分, 現在の訪問済み=%d, 残り=%d, 追加必要=%d, 最大追加=%d", 
-		originalTotalSpots, originalDurationMinutes, currentVisitedSpots, len(remainingPOIs), neededNewSpots, maxNewSpots)
-
-	// 負の値になる場合は最低1件追加
+	// 残りの物件数が少ない場合は多めに追加、多い場合は少なめに追加
+	if len(remainingPOIs) <= 2 {
+		neededNewSpots = maxNewSpots // 残り物件が少ないので最大まで追加
+	} else if len(remainingPOIs) <= 4 {
+		neededNewSpots = maxNewSpots - 1 // 中程度なので少し控えめ
+	} else {
+		neededNewSpots = 1 // 残り物件が多いので最小限追加
+	}
+	
+	// 最低1件は追加
 	if neededNewSpots <= 0 {
 		neededNewSpots = 1
 	}
 	
-	// 時間制約を考慮して調整
-	if neededNewSpots > maxNewSpots {
-		neededNewSpots = maxNewSpots
-	}
+	log.Printf("📊 物件数調整: 元の総数=%d, 元の時間=%d分, 現在の訪問済み=%d, 残り=%d, 追加予定=%d, 最大追加=%d", 
+		originalTotalSpots, originalDurationMinutes, currentVisitedSpots, len(remainingPOIs), neededNewSpots, maxNewSpots)
 
 	// 探索エリアを決定（現在地と次のPOIの間）
 	currentLatLng := model.LatLng{
