@@ -55,7 +55,7 @@ jobs:
 
       - name: Create terraform.tfvars
         run: |
-          cat > terraform.tfvars << EOF
+          cat > terraform.tfvars << 'EOF'
           # Environment specific values
           project_id = "${{ env.PROJECT_ID }}"
           region     = "${{ env.REGION }}"
@@ -77,6 +77,19 @@ jobs:
 
       - name: Terraform Plan
         run: terraform plan
+        working-directory: ./terraform/environments/dev
+
+      - name: Verify Terraform Plan
+        run: |
+          echo "🔍 Terraform Plan検証:"
+          if terraform plan -detailed-exitcode | grep -q "null"; then
+            echo "❌ WARNING: Terraform Planでnull値が検出されました！"
+            echo "環境変数が正しく設定されていない可能性があります。"
+            terraform plan
+            exit 1
+          else
+            echo "✅ Terraform Plan OK"
+          fi
         working-directory: ./terraform/environments/dev
 
       - name: Terraform Apply
