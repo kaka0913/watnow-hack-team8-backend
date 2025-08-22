@@ -385,78 +385,154 @@ func (s *GourmetStrategy) findBakeryTourCombinations(ctx context.Context, userLo
 // findLocalGourmetCombinations は地元グルメシナリオの詳細ロジックを実装
 // ロジック: [① カフェ] → [② メインの食事処] → [③ 公園/店舗街]
 func (s *GourmetStrategy) findLocalGourmetCombinations(ctx context.Context, userLocation model.LatLng) ([][]*model.POI, error) {
-	// Step 1: 食前のお茶ができるカフェを選択
-	cafes, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, []string{"カフェ"}, 1200, 10)
-	if err != nil {
-		return nil, fmt.Errorf("カフェ検索に失敗: %w", err)
-	}
+    // Step 1: 食前のお茶ができるカフェを選択（段階的に探索範囲を拡大）
+    cafes, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, []string{"カフェ"}, 1200, 10)
+    if err != nil {
+        return nil, fmt.Errorf("カフェ検索に失敗: %w", err)
+    }
 
-	// グルメシナリオで除外したいPOIをフィルタリング
-	cafes = s.filterGourmetPOIs(cafes)
+    // グルメシナリオで除外したいPOIをフィルタリング
+    cafes = s.filterGourmetPOIs(cafes)
 
-	var cafe *model.POI
-	if len(cafes) > 0 {
-		cafe = helper.FindHighestRated(cafes)
-	}
+    var cafe *model.POI
+    if len(cafes) > 0 {
+        cafe = helper.FindHighestRated(cafes)
+    } else {
+        // カフェが見つからない場合はより広い範囲で店舗カテゴリも含める
+        cafes, err = s.poiRepo.FindNearbyByCategories(ctx, userLocation, []string{"店舗"}, 2000, 15)
+        if err != nil {
+            return nil, fmt.Errorf("拡張カフェ検索に失敗: %w", err)
+        }
+        // グルメシナリオで除外したいPOIをフィルタリング
+        cafes = s.filterGourmetPOIs(cafes)
+        
+        if len(cafes) > 0 {
+            cafe = cafes[0]
+        } else {
+            // 最後の手段：観光名所カテゴリで検索
+            cafes, err = s.poiRepo.FindNearbyByCategories(ctx, userLocation, []string{"観光名所"}, 3000, 20)
+            if err == nil && len(cafes) > 0 {
+                cafe = cafes[0]
+            }
+        }
+    }
 
-	// Step 2: メインとなる地元の名店（店舗カテゴリ）を選択
-	var searchLocation model.LatLng
-	if cafe != nil {
-		searchLocation = cafe.ToLatLng()
-	} else {
-		searchLocation = userLocation
-	}
+    // Step 2: メインとなる地元の名店（店舗カテゴリ）を選択（段階的に探索範囲を拡大）
+    var searchLocation model.LatLng
+    if cafe != nil {
+        searchLocation = cafe.ToLatLng()
+    } else {
+        searchLocation = userLocation
+    }
 
-	restaurants, err := s.poiRepo.FindNearbyByCategories(ctx, searchLocation, []string{"店舗"}, 1000, 10)
-	if err != nil {
-		return nil, fmt.Errorf("店舗検索に失敗: %w", err)
-	}
-	if len(restaurants) == 0 {
-		return nil, errors.New("地元の食事処が見つかりませんでした")
-	}
+    restaurants, err := s.poiRepo.FindNearbyByCategories(ctx, searchLocation, []string{"店舗"}, 1000, 10)
+    if err != nil {
+        return nil, fmt.Errorf("店舗検索に失敗: %w", err)
+    }
+    var mainRestaurant *model.POI
+    if len(restaurants) > 0 {
+        // 評価の高い店舗を選択
+        mainRestaurant = helper.FindHighestRated(restaurants)
+    } else {
+        // 店舗が見つからない場合はより広い範囲でカフェも含める
+        restaurants, err = s.poiRepo.FindNearbyByCategories(ctx, searchLocation, []string{"カフェ"}, 1800, 15)
+        if err != nil {
+            return nil, fmt.Errorf("拡張店舗検索に失敗: %w", err)
+        }
+        if len(restaurants) > 0 {
+            mainRestaurant = restaurants[0]
+        } else {
+            // 最後の手段：観光名所カテゴリで検索
+            restaurants, err = s.poiRepo.FindNearbyByCategories(ctx, searchLocation, []string{"観光名所"}, 2500, 20)
+            if err != nil {
+                return nil, fmt.Errorf("最終店舗検索に失敗: %w", err)
+            }
+            if len(restaurants) > 0 {
+                mainRestaurant = restaurants[0]
+            } else {
+                return nil, errors.New("地元の食事処が見つかりませんでした")
+            }
+        }
+    }
 
-	// 評価の高い店舗を選択
-	mainRestaurant := helper.FindHighestRated(restaurants)
+    // Step 3: 食後の散歩に最適な公園や店舗街を選択（段階的に探索範囲を拡大）
+    restaurantLocation := mainRestaurant.ToLatLng()
+    afterSpots, err := s.poiRepo.FindNearbyByCategories(ctx, restaurantLocation, []string{"公園", "観光名所"}, 800, 10)
+    if err != nil {
+        return nil, fmt.Errorf("食後スポット検索に失敗: %w", err)
+    }
 
-	// Step 3: 食後の散歩に最適な公園や店舗街を選択
-	restaurantLocation := mainRestaurant.ToLatLng()
-	afterSpots, err := s.poiRepo.FindNearbyByCategories(ctx, restaurantLocation, []string{"公園", "観光名所"}, 800, 10)
-	if err != nil {
-		return nil, fmt.Errorf("食後スポット検索に失敗: %w", err)
-	}
+    // レストランとカフェを除外
+    filteredAfterSpots := helper.RemovePOI(afterSpots, mainRestaurant)
+    if cafe != nil {
+        filteredAfterSpots = helper.RemovePOI(filteredAfterSpots, cafe)
+    }
 
-	// レストランとカフェを除外
-	filteredAfterSpots := helper.RemovePOI(afterSpots, mainRestaurant)
-	if cafe != nil {
-		filteredAfterSpots = helper.RemovePOI(filteredAfterSpots, cafe)
-	}
+    var afterSpot *model.POI
+    if len(filteredAfterSpots) > 0 {
+        helper.SortByDistance(mainRestaurant, filteredAfterSpots)
+        afterSpot = filteredAfterSpots[0]
+    } else {
+        // 食後スポットが見つからない場合はより広い範囲で店舗カテゴリも含める
+        afterSpots, err = s.poiRepo.FindNearbyByCategories(ctx, restaurantLocation, []string{"店舗", "雑貨店"}, 1500, 15)
+        if err != nil {
+            return nil, fmt.Errorf("拡張食後スポット検索に失敗: %w", err)
+        }
+        
+        // レストランとカフェを除外
+        filteredAfterSpots = helper.RemovePOI(afterSpots, mainRestaurant)
+        if cafe != nil {
+            filteredAfterSpots = helper.RemovePOI(filteredAfterSpots, cafe)
+        }
+        
+        if len(filteredAfterSpots) > 0 {
+            helper.SortByDistance(mainRestaurant, filteredAfterSpots)
+            afterSpot = filteredAfterSpots[0]
+        } else {
+            // 最後の手段：観光名所カテゴリで検索
+            afterSpots, err = s.poiRepo.FindNearbyByCategories(ctx, restaurantLocation, []string{"観光名所"}, 2500, 20)
+            if err == nil && len(afterSpots) > 0 {
+                // レストランとカフェを除外
+                filteredAfterSpots = helper.RemovePOI(afterSpots, mainRestaurant)
+                if cafe != nil {
+                    filteredAfterSpots = helper.RemovePOI(filteredAfterSpots, cafe)
+                }
+                if len(filteredAfterSpots) > 0 {
+                    afterSpot = filteredAfterSpots[0]
+                }
+            }
+        }
+    }
 
-	var afterSpot *model.POI
-	if len(filteredAfterSpots) > 0 {
-		helper.SortByDistance(mainRestaurant, filteredAfterSpots)
-		afterSpot = filteredAfterSpots[0]
-	}
+    // 組み合わせを生成（条件を緩和して見つけやすくする）
+    var combinations [][]*model.POI
 
-	// 組み合わせを生成
-	var combinations [][]*model.POI
-	if cafe != nil && afterSpot != nil {
-		combination := []*model.POI{cafe, mainRestaurant, afterSpot}
-		if s.poiSearchHelper.ValidateCombination(combination, 0, false) {
-			combinations = append(combinations, combination)
-		}
-	} else if afterSpot != nil {
-		// カフェが見つからない場合はレストランと食後スポットのみ
-		combination := []*model.POI{mainRestaurant, afterSpot}
-		if s.poiSearchHelper.ValidateCombination(combination, 0, false) {
-			combinations = append(combinations, combination)
-		}
-	}
+    // まず理想的な組み合わせを試行
+    if cafe != nil && afterSpot != nil {
+        combination := []*model.POI{cafe, mainRestaurant, afterSpot}
+        combinations = append(combinations, combination)
+    } else if afterSpot != nil {
+        // カフェが見つからない場合はレストランと食後スポットのみ
+        combination := []*model.POI{mainRestaurant, afterSpot}
+        combinations = append(combinations, combination)
+    } else if cafe != nil {
+        // 食後スポットが見つからない場合はカフェとレストランのみ
+        combination := []*model.POI{cafe, mainRestaurant}
+        combinations = append(combinations, combination)
+    }
 
-	if len(combinations) == 0 {
-		return nil, errors.New("地元グルメの組み合わせが見つかりませんでした")
-	}
+    // 組み合わせが見つからない場合は、レストランのみでも提案
+    if len(combinations) == 0 {
+        combination := []*model.POI{mainRestaurant}
+        combinations = append(combinations, combination)
+    }
 
-	return combinations, nil
+    // nature_strategy.goと同様のエラーハンドリングを追加
+    if len(combinations) == 0 {
+        return nil, errors.New("地元グルメの組み合わせが見つかりませんでした")
+    }
+
+    return combinations, nil
 }
 
 // findSweetJourneyCombinations はスイーツ巡りシナリオの詳細ロジックを実装
