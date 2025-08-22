@@ -1,0 +1,88 @@
+name: Deploy to Cloud Run (Workload Identity)
+
+on:
+  # push:
+  #   branches: [ main ]
+  workflow_dispatch: # 手動実行も可能
+
+env:
+  PROJECT_ID: befree-468615
+  PROJECT_NUMBER: 841104676464
+  GAR_LOCATION: asia-northeast1
+  SERVICE: dev-app-server
+  REGION: asia-northeast1
+  WIF_PROVIDER: 'projects/841104676464/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+  WIF_SERVICE_ACCOUNT: 'github-actions-deploy@befree-468615.iam.gserviceaccount.com'
+
+jobs:
+  deploy:
+    permissions:
+      contents: read
+      id-token: write
+
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Google Auth (Workload Identity Federation)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.WIF_SERVICE_ACCOUNT }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker to use gcloud as credential helper
+        run: |-
+          gcloud auth configure-docker gcr.io
+
+      - name: Build and Push Container
+        run: |-
+          docker build -t "gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE }}:${{ github.sha }}" ./
+          docker push "gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE }}:${{ github.sha }}"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.0
+
+      - name: Terraform Init
+        run: terraform init
+        working-directory: ./terraform/environments/dev
+
+      - name: Create terraform.tfvars
+        run: |
+          cat > terraform.tfvars << EOF
+          # Environment specific values
+          project_id = "${{ env.PROJECT_ID }}"
+          region     = "${{ env.REGION }}"
+
+          # Database Configuration
+          supabase_url         = "${{ secrets.SUPABASE_URL }}"
+          supabase_anon_key    = "${{ secrets.SUPABASE_ANON_KEY }}"
+          supabase_db_password = "${{ secrets.SUPABASE_DB_PASSWORD }}"
+          postgres_url         = "${{ secrets.POSTGRES_URL }}"
+
+          # API Keys
+          google_maps_api_key = "${{ secrets.GOOGLE_MAPS_API_KEY }}"
+          gemini_api_key      = "${{ secrets.GEMINI_API_KEY }}"
+
+          # Container Images
+          app_server_image = "gcr.io/${{ env.PROJECT_ID }}/${{ env.SERVICE }}:${{ github.sha }}"
+          EOF
+        working-directory: ./terraform/environments/dev
+
+      - name: Terraform Plan
+        run: terraform plan
+        working-directory: ./terraform/environments/dev
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+        working-directory: ./terraform/environments/dev
+
+      - name: Show Service URL
+        run: terraform output app_server_url
+        working-directory: ./terraform/environments/dev
