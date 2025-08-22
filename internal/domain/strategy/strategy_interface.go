@@ -17,4 +17,8 @@ type StrategyInterface interface {
 	// 目的地を含むルート組み合わせを生成する
 	// 戦略が自分でPOI検索から組み合わせ生成まで全て行う
 	FindCombinationsWithDestination(ctx context.Context, scenario string, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error)
+	
+	// ルート再計算用の新しいスポット探索
+	// テーマ固有の段階的検索パターンを使用して新しいPOIを探索する
+	ExploreNewSpots(ctx context.Context, searchLocation model.LatLng) ([]*model.POI, error)
 }

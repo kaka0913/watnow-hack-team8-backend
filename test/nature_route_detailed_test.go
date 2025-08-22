@@ -101,8 +101,8 @@ func TestNatureRoutesExhaustive(t *testing.T) {
 		storyGenerator,
 	)
 
-	// ハンドラーの初期化
-	routeProposalHandler := handler.NewRouteProposalHandler(routeProposalUseCase)
+	// ハンドラーの初期化（recalculateUseCaseにはnilを渡す）
+	routeProposalHandler := handler.NewRouteProposalHandler(routeProposalUseCase, nil)
 
 	// Ginエンジンのセットアップ
 	gin.SetMode(gin.TestMode)
