@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // GourmetStrategy はカフェやベーカリーを巡るルートを提案する
@@ -21,6 +22,35 @@ func NewGourmetStrategy(repo repository.POIsRepository) StrategyInterface {
 		poiRepo:         repo,
 		poiSearchHelper: helper.NewPOISearchHelper(repo),
 	}
+}
+
+// filterGourmetPOIs はグルメシナリオで除外したいPOIをフィルタリングする
+func (s *GourmetStrategy) filterGourmetPOIs(pois []*model.POI) []*model.POI {
+	var filtered []*model.POI
+	for _, poi := range pois {
+		if poi != nil && !s.shouldExcludeFromGourmet(poi.Name) {
+			filtered = append(filtered, poi)
+		}
+	}
+	return filtered
+}
+
+// shouldExcludeFromGourmet はグルメシナリオで除外すべきPOIかどうかを判定する
+func (s *GourmetStrategy) shouldExcludeFromGourmet(poiName string) bool {
+	excludePatterns := []string{
+		"サモエドカフェ",
+		"マクドナルド",
+		"マック",
+		"McDonald's",
+	}
+
+	// 名前に除外パターンが含まれているかをチェック
+	for _, pattern := range excludePatterns {
+		if strings.Contains(poiName, pattern) {
+			return true
+		}
+	}
+	return false
 }
 
 // GetAvailableScenarios はGourmetテーマで利用可能なシナリオ一覧を取得する
@@ -69,6 +99,10 @@ func (s *GourmetStrategy) findCafeHoppingCombinations(ctx context.Context, userL
 	if err != nil {
 		return nil, fmt.Errorf("カフェ検索に失敗: %w", err)
 	}
+
+	// グルメシナリオで除外したいPOIをフィルタリング
+	cafes = s.filterGourmetPOIs(cafes)
+
 	if len(cafes) == 0 {
 		return nil, errors.New("カフェが見つかりませんでした")
 	}
@@ -98,21 +132,25 @@ func (s *GourmetStrategy) findCafeHoppingCombinations(ctx context.Context, userL
 
 	// 組み合わせを生成
 	var combinations [][]*model.POI
+
+	// まず理想的な組み合わせを試行
 	if bookStore != nil && finaleSpot != nil {
 		combination := []*model.POI{bookStore, mainCafe, finaleSpot}
-		if s.poiSearchHelper.ValidateCombination(combination, 0, false) {
-			combinations = append(combinations, combination)
-		}
+		combinations = append(combinations, combination)
 	} else if finaleSpot != nil {
 		// 書店が見つからない場合はカフェと公園/ベーカリーのみ
 		combination := []*model.POI{mainCafe, finaleSpot}
-		if s.poiSearchHelper.ValidateCombination(combination, 0, false) {
-			combinations = append(combinations, combination)
-		}
+		combinations = append(combinations, combination)
+	} else if bookStore != nil {
+		// フィナーレスポットが見つからない場合は書店とカフェのみ
+		combination := []*model.POI{bookStore, mainCafe}
+		combinations = append(combinations, combination)
 	}
 
+	// 組み合わせが見つからない場合は、カフェのみでも提案
 	if len(combinations) == 0 {
-		return nil, errors.New("カフェ巡りの組み合わせが見つかりませんでした")
+		combination := []*model.POI{mainCafe}
+		combinations = append(combinations, combination)
 	}
 
 	return combinations, nil
@@ -177,19 +215,23 @@ func (s *GourmetStrategy) findBakeryTourCombinations(ctx context.Context, userLo
 }
 
 // findLocalGourmetCombinations は地元グルメシナリオの詳細ロジックを実装
-// ロジック: [① カフェ] → [② メインの食事処] → [③ 公園/商店街]
+// ロジック: [① カフェ] → [② メインの食事処] → [③ 公園/店舗街]
 func (s *GourmetStrategy) findLocalGourmetCombinations(ctx context.Context, userLocation model.LatLng) ([][]*model.POI, error) {
 	// Step 1: 食前のお茶ができるカフェを選択
 	cafes, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, []string{"カフェ"}, 1200, 10)
 	if err != nil {
 		return nil, fmt.Errorf("カフェ検索に失敗: %w", err)
 	}
+
+	// グルメシナリオで除外したいPOIをフィルタリング
+	cafes = s.filterGourmetPOIs(cafes)
+
 	var cafe *model.POI
 	if len(cafes) > 0 {
 		cafe = helper.FindHighestRated(cafes)
 	}
 
-	// Step 2: メインとなる地元の名店（レストラン+商店カテゴリ）を選択
+	// Step 2: メインとなる地元の名店（店舗カテゴリ）を選択
 	var searchLocation model.LatLng
 	if cafe != nil {
 		searchLocation = cafe.ToLatLng()
@@ -197,27 +239,18 @@ func (s *GourmetStrategy) findLocalGourmetCombinations(ctx context.Context, user
 		searchLocation = userLocation
 	}
 
-	restaurants, err := s.poiRepo.FindNearbyByCategories(ctx, searchLocation, []string{"レストラン", "食品店"}, 1000, 10)
+	restaurants, err := s.poiRepo.FindNearbyByCategories(ctx, searchLocation, []string{"店舗"}, 1000, 10)
 	if err != nil {
-		return nil, fmt.Errorf("レストラン検索に失敗: %w", err)
+		return nil, fmt.Errorf("店舗検索に失敗: %w", err)
 	}
 	if len(restaurants) == 0 {
 		return nil, errors.New("地元の食事処が見つかりませんでした")
 	}
 
-	// レストラン+商店の両カテゴリを持つスポットを優先
-	var mainRestaurant *model.POI
-	for _, restaurant := range restaurants {
-		if helper.HasCategory(restaurant, []string{"商店"}) {
-			mainRestaurant = restaurant
-			break
-		}
-	}
-	if mainRestaurant == nil {
-		mainRestaurant = helper.FindHighestRated(restaurants)
-	}
+	// 評価の高い店舗を選択
+	mainRestaurant := helper.FindHighestRated(restaurants)
 
-	// Step 3: 食後の散歩に最適な公園や商店街を選択
+	// Step 3: 食後の散歩に最適な公園や店舗街を選択
 	restaurantLocation := mainRestaurant.ToLatLng()
 	afterSpots, err := s.poiRepo.FindNearbyByCategories(ctx, restaurantLocation, []string{"公園", "観光名所"}, 800, 10)
 	if err != nil {
@@ -266,6 +299,10 @@ func (s *GourmetStrategy) findSweetJourneyCombinations(ctx context.Context, user
 	if err != nil {
 		return nil, fmt.Errorf("カフェ検索に失敗: %w", err)
 	}
+
+	// グルメシナリオで除外したいPOIをフィルタリング
+	cafes = s.filterGourmetPOIs(cafes)
+
 	if len(cafes) == 0 {
 		return nil, errors.New("スイーツカフェが見つかりませんでした")
 	}
@@ -273,7 +310,7 @@ func (s *GourmetStrategy) findSweetJourneyCombinations(ctx context.Context, user
 
 	// Step 2: 気分転換に立ち寄れる可愛い雑貨店を選択
 	cafeALocation := cafeA.ToLatLng()
-	shops, err := s.poiRepo.FindNearbyByCategories(ctx, cafeALocation, []string{"雑貨店", "商店"}, 800, 10)
+	shops, err := s.poiRepo.FindNearbyByCategories(ctx, cafeALocation, []string{"雑貨店", "店舗"}, 800, 10)
 	if err != nil {
 		return nil, fmt.Errorf("雑貨店検索に失敗: %w", err)
 	}
@@ -284,7 +321,7 @@ func (s *GourmetStrategy) findSweetJourneyCombinations(ctx context.Context, user
 		shop = shops[0]
 	}
 
-	// Step 3: ジェラート等が楽しめる別のカフェや商店を選択
+	// Step 3: ジェラート等が楽しめる別のカフェや店舗を選択
 	var searchLocation model.LatLng
 	if shop != nil {
 		searchLocation = shop.ToLatLng()
@@ -292,10 +329,13 @@ func (s *GourmetStrategy) findSweetJourneyCombinations(ctx context.Context, user
 		searchLocation = cafeALocation
 	}
 
-	sweetSpots, err := s.poiRepo.FindNearbyByCategories(ctx, searchLocation, []string{"カフェ", "商店"}, 1000, 10)
+	sweetSpots, err := s.poiRepo.FindNearbyByCategories(ctx, searchLocation, []string{"カフェ", "店舗"}, 1000, 10)
 	if err != nil {
 		return nil, fmt.Errorf("スイーツスポット検索に失敗: %w", err)
 	}
+
+	// グルメシナリオで除外したいPOIをフィルタリング
+	sweetSpots = s.filterGourmetPOIs(sweetSpots)
 
 	// 1つ目のカフェを除外
 	filteredSweetSpots := helper.RemovePOI(sweetSpots, cafeA)
@@ -351,7 +391,7 @@ func (s *GourmetStrategy) FindCombinationsWithDestination(ctx context.Context, s
 // ロジック: [① 前半のカフェ] → [② 後半のカフェ]
 func (s *GourmetStrategy) findCafeHoppingWithDestination(ctx context.Context, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error) {
 	// 目的地周辺のPOIを特定
-	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, []string{"カフェ"})
+	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, []string{"カフェ", "公園", "観光名所"})
 	if err != nil {
 		return nil, fmt.Errorf("目的地周辺のPOIが見つかりません: %w", err)
 	}
@@ -361,6 +401,10 @@ func (s *GourmetStrategy) findCafeHoppingWithDestination(ctx context.Context, us
 	if err != nil {
 		return nil, fmt.Errorf("前半のカフェ検索に失敗: %w", err)
 	}
+
+	// グルメシナリオで除外したいPOIをフィルタリング
+	cafes1 = s.filterGourmetPOIs(cafes1)
+
 	if len(cafes1) == 0 {
 		return nil, errors.New("前半のカフェが見つかりませんでした")
 	}
@@ -372,6 +416,9 @@ func (s *GourmetStrategy) findCafeHoppingWithDestination(ctx context.Context, us
 	if err != nil {
 		return nil, fmt.Errorf("後半のカフェ検索に失敗: %w", err)
 	}
+
+	// グルメシナリオで除外したいPOIをフィルタリング
+	cafes2 = s.filterGourmetPOIs(cafes2)
 
 	// 1つ目のカフェを除外
 	filteredCafes2 := helper.RemovePOI(cafes2, cafe1)
@@ -395,7 +442,7 @@ func (s *GourmetStrategy) findCafeHoppingWithDestination(ctx context.Context, us
 // ロジック: [① 出発地のベーカリー] → [② イートイン可能なカフェ]
 func (s *GourmetStrategy) findBakeryTourWithDestination(ctx context.Context, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error) {
 	// 目的地周辺のPOIを特定
-	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, []string{"レストラン", "食品店"})
+	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, []string{"店舗", "カフェ", "ベーカリー"})
 	if err != nil {
 		return nil, fmt.Errorf("目的地周辺のPOIが見つかりません: %w", err)
 	}
@@ -448,7 +495,7 @@ func (s *GourmetStrategy) findBakeryTourWithDestination(ctx context.Context, use
 // ロジック: [① カフェ] → [② 食事処]
 func (s *GourmetStrategy) findLocalGourmetWithDestination(ctx context.Context, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error) {
 	// 目的地周辺のPOIを特定
-	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, []string{"カフェ", "商店"})
+	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, []string{"カフェ", "店舗", "観光名所"})
 	if err != nil {
 		return nil, fmt.Errorf("目的地周辺のPOIが見つかりません: %w", err)
 	}
@@ -458,6 +505,10 @@ func (s *GourmetStrategy) findLocalGourmetWithDestination(ctx context.Context, u
 	if err != nil {
 		return nil, fmt.Errorf("カフェ検索に失敗: %w", err)
 	}
+
+	// グルメシナリオで除外したいPOIをフィルタリング
+	cafes = s.filterGourmetPOIs(cafes)
+
 	var cafe *model.POI
 	if len(cafes) > 0 {
 		cafe = helper.FindHighestRated(cafes)
@@ -471,7 +522,7 @@ func (s *GourmetStrategy) findLocalGourmetWithDestination(ctx context.Context, u
 		searchLocation = userLocation
 	}
 
-	restaurants, err := s.poiRepo.FindNearbyByCategories(ctx, searchLocation, []string{"レストラン", "食品店"}, 1000, 10)
+	restaurants, err := s.poiRepo.FindNearbyByCategories(ctx, searchLocation, []string{"店舗"}, 1000, 10)
 	if err != nil {
 		return nil, fmt.Errorf("レストラン検索に失敗: %w", err)
 	}
@@ -501,27 +552,33 @@ func (s *GourmetStrategy) findLocalGourmetWithDestination(ctx context.Context, u
 // ロジック: [① スイーツ店 A] → [② スイーツ店 B]
 func (s *GourmetStrategy) findSweetJourneyWithDestination(ctx context.Context, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error) {
 	// 目的地周辺のPOIを特定
-	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, []string{"カフェ", "商店"})
+	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, []string{"カフェ", "店舗", "雑貨店"})
 	if err != nil {
 		return nil, fmt.Errorf("目的地周辺のPOIが見つかりません: %w", err)
 	}
 
-	// ルート前半にある、評価の高いカフェや商店（スイーツ系）を1つ目に選択
-	sweetSpots1, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, []string{"カフェ", "商店"}, 1500, 10)
+	// ルート前半にある、評価の高いカフェや店舗（スイーツ系）を1つ目に選択
+	sweetSpots1, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, []string{"カフェ", "店舗"}, 1500, 10)
 	if err != nil {
 		return nil, fmt.Errorf("前半のスイーツスポット検索に失敗: %w", err)
 	}
+
+	// グルメシナリオで除外したいPOIをフィルタリング
+	sweetSpots1 = s.filterGourmetPOIs(sweetSpots1)
 	if len(sweetSpots1) == 0 {
 		return nil, errors.New("前半のスイーツスポットが見つかりませんでした")
 	}
 	sweetSpot1 := helper.FindHighestRated(sweetSpots1)
 
-	// ルート後半にある、1軒目とは種類の違うスイーツが楽しめるカフェや商店を2つ目に選択
+	// ルート後半にある、1軒目とは種類の違うスイーツが楽しめるカフェや店舗を2つ目に選択
 	sweetSpot1Location := sweetSpot1.ToLatLng()
-	sweetSpots2, err := s.poiRepo.FindNearbyByCategories(ctx, sweetSpot1Location, []string{"カフェ", "商店"}, 1000, 10)
+	sweetSpots2, err := s.poiRepo.FindNearbyByCategories(ctx, sweetSpot1Location, []string{"カフェ", "店舗"}, 1000, 10)
 	if err != nil {
 		return nil, fmt.Errorf("後半のスイーツスポット検索に失敗: %w", err)
 	}
+
+	// グルメシナリオで除外したいPOIをフィルタリング
+	sweetSpots2 = s.filterGourmetPOIs(sweetSpots2)
 
 	// 1つ目のスイーツスポットを除外
 	filteredSweetSpots2 := helper.RemovePOI(sweetSpots2, sweetSpot1)
@@ -541,24 +598,40 @@ func (s *GourmetStrategy) findSweetJourneyWithDestination(ctx context.Context, u
 	return combinations, nil
 }
 
-// ExploreNewSpots はグルメテーマで新しいスポットを探索します
-func (s *GourmetStrategy) ExploreNewSpots(ctx context.Context, location model.LatLng) ([]*model.POI, error) {
-	// グルメテーマのカテゴリで周辺のPOIを検索
-	pois, err := s.poiRepo.FindNearbyByCategories(ctx, location, model.GetGourmetCategories(), 1500, 8)
-	if err != nil {
-		return nil, fmt.Errorf("グルメテーマのPOI検索に失敗: %w", err)
-	}
+// ExploreNewSpots はルート再計算用の新しいスポット探索を行う
+func (s *GourmetStrategy) ExploreNewSpots(ctx context.Context, searchLocation model.LatLng) ([]*model.POI, error) {
+	// グルメテーマに関連するカテゴリで段階的に検索
+	gourmetCategories := []string{"カフェ", "ベーカリー", "雑貨店", "書店", "店舗", "公園"}
 
-	// 最大3つまでの高評価POIを選択
-	var result []*model.POI
-	for i, poi := range pois {
-		if i >= 3 {
+	// 半径を段階的に拡張して検索
+	radiuses := []int{500, 1000, 1500}
+
+	var allSpots []*model.POI
+	for _, radius := range radiuses {
+		spots, err := s.poiRepo.FindNearbyByCategories(ctx, searchLocation, gourmetCategories, radius, 20)
+		if err != nil {
+			continue // エラーがあっても次の半径で試行
+		}
+
+		// 重複除去
+		for _, spot := range spots {
+			isDuplicate := false
+			for _, existing := range allSpots {
+				if existing.ID == spot.ID {
+					isDuplicate = true
+					break
+				}
+			}
+			if !isDuplicate {
+				allSpots = append(allSpots, spot)
+			}
+		}
+
+		// 十分な数が見つかったら終了
+		if len(allSpots) >= 15 {
 			break
 		}
-		if poi.Rate >= 3.0 {
-			result = append(result, poi)
-		}
 	}
 
-	return result, nil
+	return allSpots, nil
 }
