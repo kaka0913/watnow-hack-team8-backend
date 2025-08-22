@@ -6,6 +6,11 @@ terraform {
       version = "~> 5.0"
     }
   }
+  
+  backend "gcs" {
+    bucket = "befree-terraform-state-bucket"
+    prefix = "terraform/environments/dev"
+  }
 }
 
 provider "google" {
