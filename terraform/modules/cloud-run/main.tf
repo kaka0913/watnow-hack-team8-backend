@@ -4,6 +4,8 @@ resource "google_cloud_run_v2_service" "service" {
   project  = var.project_id
 
   template {
+    service_account = var.service_account_email
+    
     containers {
       image = var.image
 
@@ -67,6 +69,12 @@ variable "environment_variables" {
   description = "環境変数"
   type        = map(string)
   default     = {}
+}
+
+variable "service_account_email" {
+  description = "Cloud Runで使用するサービスアカウントのメールアドレス"
+  type        = string
+  default     = null
 }
 
 output "service_url" {
