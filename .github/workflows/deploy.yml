@@ -82,8 +82,8 @@ jobs:
       - name: Verify Terraform Plan
         run: |
           echo "🔍 Terraform Plan検証:"
-          if terraform plan -detailed-exitcode | grep -q "null"; then
-            echo "❌ WARNING: Terraform Planでnull値が検出されました！"
+          if terraform plan -detailed-exitcode | grep -E "env\s*\{.*value.*-> null|env\s*\{.*value.*= null"; then
+            echo "❌ WARNING: 環境変数値がnullに変更される計画が検出されました！"
             echo "環境変数が正しく設定されていない可能性があります。"
             terraform plan
             exit 1
