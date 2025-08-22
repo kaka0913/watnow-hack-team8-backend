@@ -19,9 +19,30 @@ import (
 	"Team8-App/internal/usecase"
 )
 
+// maskEnvVar は環境変数の値をマスクして表示する
+func maskEnvVar(value string) string {
+	if value == "" {
+		return "❌ 未設定"
+	}
+	if len(value) <= 8 {
+		return "✅ ****"
+	}
+	return fmt.Sprintf("✅ %s****%s", value[:4], value[len(value)-4:])
+}
+
 func main() {
+	// Cloud Run環境の検出
+	isCloudRun := os.Getenv("K_SERVICE") != "" || os.Getenv("PORT") != ""
+	
+	// 開発環境では.envファイルを読み込み、本番環境ではシステム環境変数を使用
 	if err := godotenv.Load(".env"); err != nil {
-		fmt.Println("Warning: .env file not found, using system environment variables")
+		if isCloudRun {
+			log.Printf("☁️  Cloud Run環境: システム環境変数を使用")
+		} else {
+			log.Printf("📝 .envファイルが見つかりません。システム環境変数を使用します")
+		}
+	} else {
+		log.Printf("📝 .envファイルを読み込みました")
 	}
 
 	supabaseURL := os.Getenv("SUPABASE_URL")
@@ -30,24 +51,28 @@ func main() {
 	geminiAPIKey := os.Getenv("GEMINI_API_KEY")
 	firestoreProjectID := os.Getenv("FIRESTORE_PROJECT_ID")
 
+	// 環境変数の設定状況をログ出力
+	log.Printf("🔧 環境変数設定状況:")
+	log.Printf("   SUPABASE_URL: %s", maskEnvVar(supabaseURL))
+	log.Printf("   SUPABASE_ANON_KEY: %s", maskEnvVar(supabaseAnonKey))
+	log.Printf("   GOOGLE_MAPS_API_KEY: %s", maskEnvVar(googleMapsAPIKey))
+	log.Printf("   GEMINI_API_KEY: %s", maskEnvVar(geminiAPIKey))
+	log.Printf("   FIRESTORE_PROJECT_ID: %s", maskEnvVar(firestoreProjectID))
+
 	if supabaseURL == "" || supabaseAnonKey == "" {
-		fmt.Println("⚠️  Supabase環境変数が設定されていません:")
-		log.Fatal("Supabase環境変数が設定されていません")
+		log.Fatal("❌ Supabase環境変数が設定されていません")
 	}
 
 	if googleMapsAPIKey == "" {
-		fmt.Println("⚠️  Google Maps API Keyが設定されていません:")
-		log.Fatal("Google Maps API Key not set")
+		log.Fatal("❌ Google Maps API Keyが設定されていません")
 	}
 
 	if geminiAPIKey == "" {
-		fmt.Println("⚠️  Gemini API Keyが設定されていません:")
-		log.Fatal("Gemini API Key not set")
+		log.Fatal("❌ Gemini API Keyが設定されていません")
 	}
 
 	if firestoreProjectID == "" {
-		fmt.Println("⚠️  Firestore Project IDが設定されていません:")
-		log.Fatal("Firestore Project ID not set")
+		log.Fatal("❌ Firestore Project IDが設定されていません")
 	}
 	// Database connections
 	supabaseClient, err := database.NewSupabaseClient()
