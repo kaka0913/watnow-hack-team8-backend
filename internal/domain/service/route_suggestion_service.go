@@ -22,7 +22,6 @@ type routeSuggestionService struct {
 	directionsProvider *maps.GoogleDirectionsProvider
 	strategies         map[string]strategy.StrategyInterface
 	poiRepo            repository.POIsRepository
-	routeBuilderHelper *RouteBuilderHelper
 }
 
 func NewRouteSuggestionService(dp *maps.GoogleDirectionsProvider, repo repository.POIsRepository) RouteSuggestionService {
@@ -37,7 +36,6 @@ func NewRouteSuggestionService(dp *maps.GoogleDirectionsProvider, repo repositor
 		directionsProvider: dp,
 		strategies:         strategies,
 		poiRepo:            repo,
-		routeBuilderHelper: NewRouteBuilderHelper(),
 	}
 }
 
@@ -62,15 +60,31 @@ func (s *routeSuggestionService) SuggestRoutes(ctx context.Context, req *model.S
 
 	if req.HasDestination() {
 		combinationFinder = func(ctx context.Context, scenario string, userLocation model.LatLng) ([][]*model.POI, error) {
-			return selectedStrategy.FindCombinationsWithDestination(ctx, scenario, userLocation, *req.Destination)
+			return selectedStrategy.FindCombinationsWithDestination(ctx, scenario, userLocation, *req.Destination())
 		}
-		routeOptimizer = s.optimizeRouteWithDestination
+		if req.TimeMinutes > 0 {
+			routeOptimizer = func(ctx context.Context, name string, userLocation model.LatLng, combination []*model.POI) (*model.SuggestedRoute, error) {
+				return s.optimizeRouteWithDestinationAndTimeTarget(ctx, name, userLocation, combination, req.TimeMinutes)
+			}
+		} else {
+			routeOptimizer = func(ctx context.Context, name string, userLocation model.LatLng, combination []*model.POI) (*model.SuggestedRoute, error) {
+				return s.optimizeRouteWithDestination(ctx, name, userLocation, combination)
+			}
+		}
 	} else {
 		combinationFinder = selectedStrategy.FindCombinations
-		routeOptimizer = s.optimizeRoute
+		if req.TimeMinutes > 0 {
+			routeOptimizer = func(ctx context.Context, name string, userLocation model.LatLng, combination []*model.POI) (*model.SuggestedRoute, error) {
+				return s.optimizeRouteWithTimeTarget(ctx, name, userLocation, combination, req.TimeMinutes)
+			}
+		} else {
+			routeOptimizer = func(ctx context.Context, name string, userLocation model.LatLng, combination []*model.POI) (*model.SuggestedRoute, error) {
+				return s.optimizeRoute(ctx, name, userLocation, combination)
+			}
+		}
 	}
 
-	return s.executeScenariosInParallel(ctx, req.Theme, scenariosToRun, req.UserLocation, combinationFinder, routeOptimizer)
+	return s.executeScenariosInParallel(ctx, req.Theme, scenariosToRun, req.UserLocation(), req.RealtimeContext, combinationFinder, routeOptimizer)
 }
 
 func (s *routeSuggestionService) GetAvailableScenariosForTheme(theme string) ([]string, error) {
@@ -98,6 +112,7 @@ func (s *routeSuggestionService) executeScenariosInParallel(
 	theme string,
 	scenarios []string,
 	userLocation model.LatLng,
+	realtimeContext *model.RealtimeContext,
 	findCombinations combinationFinderFunc, // 組み合わせ取得ロジックを引数で受け取る
 	optimizeRoute routeOptimizerFunc, // ルート最適化ロジックを引数で受け取る
 ) ([]*model.SuggestedRoute, error) {
@@ -121,7 +136,7 @@ func (s *routeSuggestionService) executeScenariosInParallel(
 				return
 			}
 			// 2. 組み合わせからルートを並行構築
-			routes := s.buildRoutesFromCombinations(ctx, theme, sc, userLocation, combinations, optimizeRoute)
+			routes := s.buildRoutesFromCombinations(ctx, theme, sc, userLocation, realtimeContext, combinations, optimizeRoute)
 			resultsChan <- scenarioResult{routes: routes}
 		}(scenario)
 	}
@@ -158,6 +173,7 @@ func (s *routeSuggestionService) buildRoutesFromCombinations(
 	ctx context.Context,
 	theme, scenario string,
 	userLocation model.LatLng,
+	realtimeContext *model.RealtimeContext,
 	combinations [][]*model.POI,
 	optimizeRoute routeOptimizerFunc, // 最適化関数を引数で受け取る
 ) []*model.SuggestedRoute {
@@ -169,7 +185,8 @@ func (s *routeSuggestionService) buildRoutesFromCombinations(
 		wg.Add(1)
 		go func(index int, combination []*model.POI) {
 			defer wg.Done()
-			routeName := s.routeBuilderHelper.GenerateRouteName(theme, scenario, combination, index)
+			// 仮のルート名を生成（実際のタイトルはUsecaseでGemini APIにより生成される）
+			routeName := generateTemporaryRouteName(theme, scenario, combination, index)
 			// 渡された最適化関数を実行
 			route, err := optimizeRoute(ctx, routeName, userLocation, combination)
 			if err == nil {
@@ -189,16 +206,37 @@ func (s *routeSuggestionService) buildRoutesFromCombinations(
 
 // optimizeRoute は目的地なしのルートを最適化する
 func (s *routeSuggestionService) optimizeRoute(ctx context.Context, name string, userLocation model.LatLng, combination []*model.POI) (*model.SuggestedRoute, error) {
-	if len(combination) != 3 {
-		return nil, errors.New("組み合わせは3つのスポットである必要があります")
+	// POI数の検証（最低2箇所必要）
+	if len(combination) < 2 {
+		return nil, errors.New("ルート生成には最低2箇所のスポットが必要です")
 	}
-	permutations := s.routeBuilderHelper.GeneratePermutations(combination)
+	
+	// nilPOIのチェック
+	validPOIs := make([]*model.POI, 0, len(combination))
+	for _, poi := range combination {
+		if poi != nil {
+			validPOIs = append(validPOIs, poi)
+		}
+	}
+	
+	if len(validPOIs) < 2 {
+		return nil, errors.New("有効なスポットが不足しています（最低2箇所必要）")
+	}
+	
+	// 2箇所の場合は順列なし、3箇所以上の場合は順列生成
+	var routesToTry [][]*model.POI
+	if len(validPOIs) == 2 {
+		routesToTry = [][]*model.POI{validPOIs}
+	} else {
+		routesToTry = generatePermutations(validPOIs)
+	}
+	
 	var bestRoute *model.SuggestedRoute
 	var shortestDuration = time.Duration(24 * time.Hour)
 
-	for _, perm := range permutations {
-		waypointLatLngs := make([]model.LatLng, len(perm))
-		for i, poi := range perm {
+	for _, route := range routesToTry {
+		waypointLatLngs := make([]model.LatLng, len(route))
+		for i, poi := range route {
 			waypointLatLngs[i] = poi.ToLatLng()
 		}
 		routeDetails, err := s.directionsProvider.GetWalkingRoute(ctx, userLocation, waypointLatLngs...)
@@ -216,7 +254,7 @@ func (s *routeSuggestionService) optimizeRoute(ctx context.Context, name string,
 			shortestDuration = routeDetails.TotalDuration
 			bestRoute = &model.SuggestedRoute{
 				Name:          fmt.Sprintf("%s (%d分)", name, int(routeDetails.TotalDuration.Minutes())),
-				Spots:         perm,
+				Spots:         route,
 				TotalDuration: routeDetails.TotalDuration,
 				Polyline:      routeDetails.Polyline,
 			}
@@ -231,14 +269,38 @@ func (s *routeSuggestionService) optimizeRoute(ctx context.Context, name string,
 
 // optimizeRouteWithDestination は目的地ありのルートを最適化する
 func (s *routeSuggestionService) optimizeRouteWithDestination(ctx context.Context, name string, userLocation model.LatLng, combination []*model.POI) (*model.SuggestedRoute, error) {
-	if len(combination) != 3 {
-		return nil, errors.New("組み合わせは3つのスポット(経由地2+目的地1)である必要があります")
+	// POI数の検証（最低2箇所必要、最後が目的地）
+	if len(combination) < 2 {
+		return nil, errors.New("目的地ありルート生成には最低2箇所のスポットが必要です")
 	}
-	poi1, poi2, destination := combination[0], combination[1], combination[2]
-	routesToTry := [][]*model.POI{
-		{poi1, poi2, destination},
-		{poi2, poi1, destination},
+	
+	// nilPOIのチェック
+	validPOIs := make([]*model.POI, 0, len(combination))
+	for _, poi := range combination {
+		if poi != nil {
+			validPOIs = append(validPOIs, poi)
+		}
 	}
+	
+	if len(validPOIs) < 2 {
+		return nil, errors.New("有効なスポットが不足しています（最低2箇所必要）")
+	}
+	
+	// 最後のPOIを目的地として扱う
+	destination := validPOIs[len(validPOIs)-1]
+	waypoints := validPOIs[:len(validPOIs)-1]
+	
+	// 経由地が1つの場合は順列なし、複数の場合は順列生成
+	var routesToTry [][]*model.POI
+	if len(waypoints) == 1 {
+		routesToTry = [][]*model.POI{append(waypoints, destination)}
+	} else {
+		waypointPermutations := generatePermutations(waypoints)
+		for _, perm := range waypointPermutations {
+			routesToTry = append(routesToTry, append(perm, destination))
+		}
+	}
+	
 	var bestRoute *model.SuggestedRoute
 	var shortestDuration = time.Duration(24 * time.Hour)
 
@@ -271,6 +333,173 @@ func (s *routeSuggestionService) optimizeRouteWithDestination(ctx context.Contex
 
 	if bestRoute == nil {
 		return nil, errors.New("制限時間内で目的地へのルート計算に成功した順列がありませんでした")
+	}
+	return bestRoute, nil
+}
+
+// optimizeRouteWithTimeTarget は指定された時間目標に近いルートを最適化する
+func (s *routeSuggestionService) optimizeRouteWithTimeTarget(ctx context.Context, name string, userLocation model.LatLng, combination []*model.POI, targetMinutes int) (*model.SuggestedRoute, error) {
+	// POI数の検証（最低2箇所必要）
+	if len(combination) < 2 {
+		return nil, errors.New("ルート生成には最低2箇所のスポットが必要です")
+	}
+	
+	// nilPOIのチェック
+	validPOIs := make([]*model.POI, 0, len(combination))
+	for _, poi := range combination {
+		if poi != nil {
+			validPOIs = append(validPOIs, poi)
+		}
+	}
+	
+	if len(validPOIs) < 2 {
+		return nil, errors.New("有効なスポットが不足しています（最低2箇所必要）")
+	}
+	
+	// 2箇所の場合は順列なし、3箇所以上の場合は順列生成
+	var routesToTry [][]*model.POI
+	if len(validPOIs) == 2 {
+		routesToTry = [][]*model.POI{validPOIs}
+	} else {
+		routesToTry = generatePermutations(validPOIs)
+	}
+	
+	var bestRoute *model.SuggestedRoute
+	var closestDifference = time.Duration(24 * time.Hour) // 最も目標に近い差を追跡
+	targetDuration := time.Duration(targetMinutes) * time.Minute
+
+	// 許容範囲の計算：目標時間の±50%、最小10分、最大120分
+	minAcceptableDuration := targetDuration / 2
+	if minAcceptableDuration < 10*time.Minute {
+		minAcceptableDuration = 10 * time.Minute
+	}
+	maxAcceptableDuration := targetDuration * 3 / 2
+	if maxAcceptableDuration > 120*time.Minute {
+		maxAcceptableDuration = 120 * time.Minute
+	}
+
+	for _, route := range routesToTry {
+		waypointLatLngs := make([]model.LatLng, len(route))
+		for i, poi := range route {
+			waypointLatLngs[i] = poi.ToLatLng()
+		}
+		routeDetails, err := s.directionsProvider.GetWalkingRoute(ctx, userLocation, waypointLatLngs...)
+		if err != nil {
+			continue
+		}
+
+		// 許容範囲内かチェック
+		if routeDetails.TotalDuration < minAcceptableDuration || routeDetails.TotalDuration > maxAcceptableDuration {
+			continue
+		}
+
+		// 目標時間により近いかチェック
+		difference := routeDetails.TotalDuration - targetDuration
+		if difference < 0 {
+			difference = -difference
+		}
+		
+		if difference < closestDifference {
+			closestDifference = difference
+			bestRoute = &model.SuggestedRoute{
+				Name:          fmt.Sprintf("%s (%d分)", name, int(routeDetails.TotalDuration.Minutes())),
+				Spots:         route,
+				TotalDuration: routeDetails.TotalDuration,
+				Polyline:      routeDetails.Polyline,
+			}
+		}
+	}
+
+	if bestRoute == nil {
+		return nil, fmt.Errorf("目標時間%d分に適したルートが見つかりませんでした（許容範囲: %d-%d分）", 
+			targetMinutes, int(minAcceptableDuration.Minutes()), int(maxAcceptableDuration.Minutes()))
+	}
+	return bestRoute, nil
+}
+
+// optimizeRouteWithDestinationAndTimeTarget は目的地ありで指定された時間目標に近いルートを最適化する
+func (s *routeSuggestionService) optimizeRouteWithDestinationAndTimeTarget(ctx context.Context, name string, userLocation model.LatLng, combination []*model.POI, targetMinutes int) (*model.SuggestedRoute, error) {
+	// POI数の検証（最低2箇所必要、最後が目的地）
+	if len(combination) < 2 {
+		return nil, errors.New("目的地ありルート生成には最低2箇所のスポットが必要です")
+	}
+	
+	// nilPOIのチェック
+	validPOIs := make([]*model.POI, 0, len(combination))
+	for _, poi := range combination {
+		if poi != nil {
+			validPOIs = append(validPOIs, poi)
+		}
+	}
+	
+	if len(validPOIs) < 2 {
+		return nil, errors.New("有効なスポットが不足しています（最低2箇所必要）")
+	}
+	
+	// 最後のPOIを目的地として扱う
+	destination := validPOIs[len(validPOIs)-1]
+	waypoints := validPOIs[:len(validPOIs)-1]
+	
+	// 経由地が1つの場合は順列なし、複数の場合は順列生成
+	var routesToTry [][]*model.POI
+	if len(waypoints) == 1 {
+		routesToTry = [][]*model.POI{append(waypoints, destination)}
+	} else {
+		waypointPermutations := generatePermutations(waypoints)
+		for _, perm := range waypointPermutations {
+			routesToTry = append(routesToTry, append(perm, destination))
+		}
+	}
+	
+	var bestRoute *model.SuggestedRoute
+	var closestDifference = time.Duration(24 * time.Hour) // 最も目標に近い差を追跡
+	targetDuration := time.Duration(targetMinutes) * time.Minute
+
+	// 許容範囲の計算：目標時間の±50%、最小10分、最大120分
+	minAcceptableDuration := targetDuration / 2
+	if minAcceptableDuration < 10*time.Minute {
+		minAcceptableDuration = 10 * time.Minute
+	}
+	maxAcceptableDuration := targetDuration * 3 / 2
+	if maxAcceptableDuration > 120*time.Minute {
+		maxAcceptableDuration = 120 * time.Minute
+	}
+
+	for _, route := range routesToTry {
+		waypointLatLngs := make([]model.LatLng, len(route))
+		for i, poi := range route {
+			waypointLatLngs[i] = poi.ToLatLng()
+		}
+		routeDetails, err := s.directionsProvider.GetWalkingRoute(ctx, userLocation, waypointLatLngs...)
+		if err != nil {
+			continue
+		}
+
+		// 許容範囲内かチェック
+		if routeDetails.TotalDuration < minAcceptableDuration || routeDetails.TotalDuration > maxAcceptableDuration {
+			continue
+		}
+
+		// 目標時間により近いかチェック
+		difference := routeDetails.TotalDuration - targetDuration
+		if difference < 0 {
+			difference = -difference
+		}
+		
+		if difference < closestDifference {
+			closestDifference = difference
+			bestRoute = &model.SuggestedRoute{
+				Name:          fmt.Sprintf("%s (%d分)", name, int(routeDetails.TotalDuration.Minutes())),
+				Spots:         route,
+				TotalDuration: routeDetails.TotalDuration,
+				Polyline:      routeDetails.Polyline,
+			}
+		}
+	}
+
+	if bestRoute == nil {
+		return nil, fmt.Errorf("目標時間%d分に適したルートが見つかりませんでした（許容範囲: %d-%d分）", 
+			targetMinutes, int(minAcceptableDuration.Minutes()), int(maxAcceptableDuration.Minutes()))
 	}
 	return bestRoute, nil
 }

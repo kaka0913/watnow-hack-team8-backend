@@ -135,3 +135,121 @@ func GetAllScenarios() []string {
 	scenarios = append(scenarios, GetHorrorScenarios()...)
 	return scenarios
 }
+
+// シナリオ固有のPOIカテゴリマッピング（実際にSupabaseに存在するカテゴリのみ使用）
+var ScenarioCategoriesMap = map[string][]string{
+	// グルメシナリオ
+	ScenarioCafeHopping:  {"カフェ", "ベーカリー", "観光名所"},
+	ScenarioBakeryTour:   {"ベーカリー", "カフェ", "店舗"},
+	ScenarioLocalGourmet: {"店舗", "観光名所"},
+	ScenarioSweetJourney: {"ベーカリー", "カフェ", "店舗"},
+
+	// 自然シナリオ（実際に存在するカテゴリに更新）
+	ScenarioParkTour:     {"公園", "観光名所", "ベーカリー", "カフェ"},
+	ScenarioRiverside:    {"河川敷公園", "公園", "カフェ", "観光名所"},
+	ScenarioTempleNature: {"寺院", "公園", "観光名所", "店舗"},
+
+	// 歴史・文化シナリオ
+	ScenarioTempleShrine: {"寺院", "神社", "観光名所"},
+	ScenarioMuseumTour:   {"博物館", "美術館・ギャラリー", "観光名所"},
+	ScenarioOldTown:      {"観光名所", "店舗"},
+	ScenarioCulturalWalk: {"観光名所", "博物館", "美術館・ギャラリー"},
+
+	// ホラーシナリオ
+	ScenarioGhostTour:    {"観光名所", "寺院", "店舗"},
+	ScenarioHauntedRuins: {"観光名所"},
+	ScenarioCursedNature: {"寺院", "公園"},
+	ScenarioCemeteryWalk: {"寺院", "神社", "観光名所"},
+}
+
+// テーマごとのPOIカテゴリマッピング（実際にSupabaseに存在するカテゴリのみ使用）
+var ThemeCategoriesMap = map[string][]string{
+	ThemeGourmet: {
+		"カフェ", "ベーカリー", "店舗", "観光名所",
+	},
+	ThemeNature: {
+		"公園", "河川敷公園", "観光名所", "寺院", "神社", "カフェ", "ベーカリー", "店舗",
+	},
+	ThemeHistoryAndCulture: {
+		"寺院", "神社", "博物館", "美術館・ギャラリー", "観光名所", "店舗",
+	},
+	ThemeHorror: {
+		"観光名所", "寺院", "神社", "公園", "店舗",
+	},
+}
+
+// GetScenarioCategories はシナリオ固有のPOIカテゴリ一覧を取得する
+func GetScenarioCategories(scenario string) []string {
+	if categories, ok := ScenarioCategoriesMap[scenario]; ok {
+		return categories
+	}
+	return nil // シナリオ固有のカテゴリがない場合はnilを返す
+}
+
+// GetThemeCategories はテーマで使用するPOIカテゴリ一覧を取得する
+func GetThemeCategories(theme string) []string {
+	if categories, ok := ThemeCategoriesMap[theme]; ok {
+		return categories
+	}
+	// デフォルトは実際に存在する全カテゴリ
+	return []string{"カフェ", "ベーカリー", "公園", "博物館", "図書館", "寺院", "店舗", "書店", "河川敷公園", "神社", "美術館・ギャラリー", "花屋", "観光名所", "雑貨店"}
+}
+
+// GetGourmetCategories はグルメテーマのPOIカテゴリ一覧を取得する
+func GetGourmetCategories() []string {
+	return ThemeCategoriesMap[ThemeGourmet]
+}
+
+// GetNatureCategories は自然テーマのPOIカテゴリ一覧を取得する
+func GetNatureCategories() []string {
+	return ThemeCategoriesMap[ThemeNature]
+}
+
+// GetHistoryAndCultureCategories は歴史・文化探訪テーマのPOIカテゴリ一覧を取得する
+func GetHistoryAndCultureCategories() []string {
+	return ThemeCategoriesMap[ThemeHistoryAndCulture]
+}
+
+// GetHorrorCategories はホラーテーマのPOIカテゴリ一覧を取得する
+func GetHorrorCategories() []string {
+	return ThemeCategoriesMap[ThemeHorror]
+}
+
+// GetCategoriesForThemeAndScenario はテーマとシナリオに応じて最適なカテゴリを取得する
+// シナリオ固有のカテゴリがある場合はそれを、ない場合はテーマのカテゴリを返す
+func GetCategoriesForThemeAndScenario(theme, scenario string) []string {
+	// シナリオ固有のカテゴリがある場合は優先
+	if scenarioCategories := GetScenarioCategories(scenario); len(scenarioCategories) > 0 {
+		return scenarioCategories
+	}
+	// シナリオ固有のカテゴリがない場合はテーマのカテゴリを返す
+	return GetThemeCategories(theme)
+}
+
+// IsValidTheme は有効なテーマかどうかをチェックする
+func IsValidTheme(theme string) bool {
+	_, ok := ThemeCategoriesMap[theme]
+	return ok
+}
+
+// IsValidScenario は有効なシナリオかどうかをチェックする
+func IsValidScenario(scenario string) bool {
+	_, ok := ScenarioNameMap[scenario]
+	return ok
+}
+
+// GetScenariosForTheme は指定されたテーマのシナリオ一覧を取得する
+func GetScenariosForTheme(theme string) []string {
+	switch theme {
+	case ThemeGourmet:
+		return GetGourmetScenarios()
+	case ThemeNature:
+		return GetNatureScenarios()
+	case ThemeHistoryAndCulture:
+		return GetHistoryAndCultureScenarios()
+	case ThemeHorror:
+		return GetHorrorScenarios()
+	default:
+		return []string{}
+	}
+}

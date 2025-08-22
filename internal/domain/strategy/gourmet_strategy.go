@@ -540,19 +540,3 @@ func (s *GourmetStrategy) findSweetJourneyWithDestination(ctx context.Context, u
 
 	return combinations, nil
 }
-
-// GetTargetCategories は指定されたシナリオで検索対象となるPOIカテゴリを取得する
-func (s *GourmetStrategy) GetTargetCategories(scenario string) []string {
-	switch scenario {
-	case model.ScenarioCafeHopping:
-		return []string{"書店", "雑貨店", "カフェ", "公園", "ベーカリー"}
-	case model.ScenarioBakeryTour:
-		return []string{"ベーカリー", "公園"}
-	case model.ScenarioLocalGourmet:
-		return []string{"カフェ", "レストラン", "食品店", "商店", "公園", "観光名所"}
-	case model.ScenarioSweetJourney:
-		return []string{"カフェ", "雑貨店", "商店"}
-	default:
-		return []string{"カフェ", "ベーカリー"}
-	}
-}
