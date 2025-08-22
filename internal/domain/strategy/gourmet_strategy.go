@@ -351,7 +351,7 @@ func (s *GourmetStrategy) FindCombinationsWithDestination(ctx context.Context, s
 // ロジック: [① 前半のカフェ] → [② 後半のカフェ]
 func (s *GourmetStrategy) findCafeHoppingWithDestination(ctx context.Context, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error) {
 	// 目的地周辺のPOIを特定
-	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination)
+	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, []string{"カフェ"})
 	if err != nil {
 		return nil, fmt.Errorf("目的地周辺のPOIが見つかりません: %w", err)
 	}
@@ -395,7 +395,7 @@ func (s *GourmetStrategy) findCafeHoppingWithDestination(ctx context.Context, us
 // ロジック: [① 出発地のベーカリー] → [② イートイン可能なカフェ]
 func (s *GourmetStrategy) findBakeryTourWithDestination(ctx context.Context, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error) {
 	// 目的地周辺のPOIを特定
-	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination)
+	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, []string{"レストラン", "食品店"})
 	if err != nil {
 		return nil, fmt.Errorf("目的地周辺のPOIが見つかりません: %w", err)
 	}
@@ -448,7 +448,7 @@ func (s *GourmetStrategy) findBakeryTourWithDestination(ctx context.Context, use
 // ロジック: [① カフェ] → [② 食事処]
 func (s *GourmetStrategy) findLocalGourmetWithDestination(ctx context.Context, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error) {
 	// 目的地周辺のPOIを特定
-	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination)
+	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, []string{"カフェ", "商店"})
 	if err != nil {
 		return nil, fmt.Errorf("目的地周辺のPOIが見つかりません: %w", err)
 	}
@@ -501,7 +501,7 @@ func (s *GourmetStrategy) findLocalGourmetWithDestination(ctx context.Context, u
 // ロジック: [① スイーツ店 A] → [② スイーツ店 B]
 func (s *GourmetStrategy) findSweetJourneyWithDestination(ctx context.Context, userLocation model.LatLng, destination model.LatLng) ([][]*model.POI, error) {
 	// 目的地周辺のPOIを特定
-	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination)
+	destinationPOI, err := s.poiSearchHelper.FindNearestPOI(ctx, destination, []string{"カフェ", "商店"})
 	if err != nil {
 		return nil, fmt.Errorf("目的地周辺のPOIが見つかりません: %w", err)
 	}
