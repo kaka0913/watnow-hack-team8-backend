@@ -71,3 +71,23 @@ func (s *HorrorStrategy) FindCombinationsWithDestination(ctx context.Context, sc
 	combination := []*model.POI{candidates[0], candidates[1], destinationPOIs[0]}
 	return [][]*model.POI{combination}, nil
 }
+
+// ExploreNewSpots はホラーテーマで新しいスポットを探索します
+func (s *HorrorStrategy) ExploreNewSpots(ctx context.Context, location model.LatLng) ([]*model.POI, error) {
+	// ホラーテーマのカテゴリで周辺のPOIを検索
+	pois, err := s.poiRepo.FindNearbyByCategories(ctx, location, model.GetHorrorCategories(), 2000, 8)
+	if err != nil {
+		return nil, fmt.Errorf("ホラーテーマのPOI検索に失敗: %w", err)
+	}
+
+	// 最大3つまでのPOIを選択
+	var result []*model.POI
+	for i, poi := range pois {
+		if i >= 3 {
+			break
+		}
+		result = append(result, poi)
+	}
+
+	return result, nil
+}

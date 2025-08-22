@@ -71,3 +71,25 @@ func (s *HistoryAndCultureStrategy) FindCombinationsWithDestination(ctx context.
 	combination := []*model.POI{candidates[0], candidates[1], destinationPOIs[0]}
 	return [][]*model.POI{combination}, nil
 }
+
+// ExploreNewSpots は歴史・文化テーマで新しいスポットを探索します
+func (s *HistoryAndCultureStrategy) ExploreNewSpots(ctx context.Context, location model.LatLng) ([]*model.POI, error) {
+	// 歴史・文化テーマのカテゴリで周辺のPOIを検索
+	pois, err := s.poiRepo.FindNearbyByCategories(ctx, location, model.GetHistoryAndCultureCategories(), 1500, 8)
+	if err != nil {
+		return nil, fmt.Errorf("歴史・文化テーマのPOI検索に失敗: %w", err)
+	}
+
+	// 最大3つまでの高評価POIを選択
+	var result []*model.POI
+	for i, poi := range pois {
+		if i >= 3 {
+			break
+		}
+		if poi.Rate >= 3.0 {
+			result = append(result, poi)
+		}
+	}
+
+	return result, nil
+}

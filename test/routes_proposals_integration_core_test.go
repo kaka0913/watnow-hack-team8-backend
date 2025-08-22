@@ -77,7 +77,7 @@ func TestRoutesProposalsIntegrationCore(t *testing.T) {
 	)
 
 	// ハンドラーの初期化
-	routeProposalHandler := handler.NewRouteProposalHandler(routeProposalUseCase)
+	routeProposalHandler := handler.NewRouteProposalHandler(routeProposalUseCase, nil)
 
 	// Ginエンジンのセットアップ
 	gin.SetMode(gin.TestMode)

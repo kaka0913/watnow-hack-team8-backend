@@ -523,3 +523,43 @@ func (s *NatureStrategy) findTempleNatureWithDestination(ctx context.Context, us
 
 	return combinations, nil
 }
+
+// ExploreNewSpots は自然テーマで新しいスポットを探索
+func (s *NatureStrategy) ExploreNewSpots(ctx context.Context, location model.LatLng) ([]*model.POI, error) {
+	// Step 1: 自然テーマのカテゴリで周辺のPOIを検索
+	pois, err := s.poiRepo.FindNearbyByCategories(ctx, location, model.GetNatureCategories(), 2000, 10)
+	if err != nil {
+		return nil, fmt.Errorf("自然テーマのPOI検索に失敗: %w", err)
+	}
+
+	// Step 2: POIが見つからない場合は範囲を広げて一般的なカテゴリで検索
+	if len(pois) == 0 {
+		pois, err = s.poiRepo.FindNearbyByCategories(ctx, location, []string{"観光名所", "店舗"}, 3000, 15)
+		if err != nil {
+			return nil, fmt.Errorf("拡張検索に失敗: %w", err)
+		}
+	}
+
+	// Step 3: さらにPOIが見つからない場合は寺院カテゴリで検索
+	if len(pois) == 0 {
+		pois, err = s.poiRepo.FindNearbyByCategories(ctx, location, []string{"寺院"}, 5000, 20)
+		if err != nil {
+			return nil, fmt.Errorf("寺院検索に失敗: %w", err)
+		}
+	}
+
+	// 評価フィルタリングは緩くして、より多くの候補を確保
+	var result []*model.POI
+	for _, poi := range pois {
+		if poi.Rate >= 2.0 { // 評価を2.0以上に緩和
+			result = append(result, poi)
+		}
+	}
+
+	// 評価でフィルタしても見つからない場合は、全てのPOIを返す
+	if len(result) == 0 {
+		result = pois
+	}
+
+	return result, nil
+}

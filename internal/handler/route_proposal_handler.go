@@ -11,13 +11,15 @@ import (
 
 // RouteProposalHandler はルート提案APIのハンドラー
 type RouteProposalHandler struct {
-	useCase usecase.RouteProposalUseCase
+	proposalUseCase     usecase.RouteProposalUseCase
+	recalculateUseCase  usecase.RouteRecalculateUseCase
 }
 
 // NewRouteProposalHandler は新しいRouteProposalHandlerインスタンスを作成
-func NewRouteProposalHandler(useCase usecase.RouteProposalUseCase) *RouteProposalHandler {
+func NewRouteProposalHandler(proposalUseCase usecase.RouteProposalUseCase, recalculateUseCase usecase.RouteRecalculateUseCase) *RouteProposalHandler {
 	return &RouteProposalHandler{
-		useCase: useCase,
+		proposalUseCase:    proposalUseCase,
+		recalculateUseCase: recalculateUseCase,
 	}
 }
 
@@ -45,7 +47,7 @@ func (h *RouteProposalHandler) PostRouteProposals(c *gin.Context) {
 	}
 
 	// UseCase呼び出し
-	response, err := h.useCase.GenerateProposals(c.Request.Context(), &req)
+	response, err := h.proposalUseCase.GenerateProposals(c.Request.Context(), &req)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "ルート提案の生成に失敗しました",
@@ -123,7 +125,7 @@ func (h *RouteProposalHandler) GetRouteProposal(c *gin.Context) {
 	}
 
 	// UseCaseから取得
-	proposal, err := h.useCase.GetRouteProposal(c.Request.Context(), proposalID)
+	proposal, err := h.proposalUseCase.GetRouteProposal(c.Request.Context(), proposalID)
 	if err != nil {
 		// エラーメッセージから404か500かを判定
 		if strings.Contains(err.Error(), "見つかりません") || strings.Contains(err.Error(), "有効期限切れ") {

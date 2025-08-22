@@ -25,6 +25,8 @@ Thumbs.db
 # Google Cloud サービスアカウントキー
 keys/
 *.json
+befree-firestore-key.json
+github-actions-key.json
 
 # Terraformファイル
 *.tfvars
