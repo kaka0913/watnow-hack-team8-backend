@@ -29,6 +29,7 @@ module "app_server" {
   location     = var.region
   project_id   = var.project_id
   image        = var.app_server_image
+  service_account_email = "github-actions-deploy@befree-468615.iam.gserviceaccount.com"
   
   environment_variables = {
     ENVIRONMENT         = "development"
