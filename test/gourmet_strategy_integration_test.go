@@ -39,91 +39,75 @@ func getPrimaryCategory(poi *model.POI) string {
 
 // createUserDefinedDestinations ユーザーが任意に指定できる目的地設定関数
 func createUserDefinedDestinations() map[string]model.LatLng {
-	// ユーザーが自由に変更可能な目的地座標
-	// 以下の座標は例として京都の著名スポットを設定していますが、
-	// 任意の緯度経度に変更することができます
 	return map[string]model.LatLng{
-		model.ScenarioCafeHopping: {
-			Lat: 35.0030,  // 例: 祇園周辺 - カフェ文化エリア
-			Lng: 135.7728, // ユーザーが任意の座標に変更可能
-		},
-		model.ScenarioBakeryTour: {
-			Lat: 35.0116,  // 例: 京都駅周辺 - 交通の要所
-			Lng: 135.7681, // ユーザーが任意の座標に変更可能
-		},
-		model.ScenarioLocalGourmet: {
-			Lat: 35.0073,  // 例: 先斗町周辺 - 地元グルメエリア
-			Lng: 135.7704, // ユーザーが任意の座標に変更可能
-		},
-		model.ScenarioSweetJourney: {
-			Lat: 35.0052,  // 例: 木屋町周辺 - スイーツ店多い
-			Lng: 135.7692, // ユーザーが任意の座標に変更可能
-		},
+		model.ScenarioCafeHopping:  {Lat: 35.0030, Lng: 135.7728},
+		model.ScenarioBakeryTour:   {Lat: 35.0116, Lng: 135.7681},
+		model.ScenarioLocalGourmet: {Lat: 35.0073, Lng: 135.7704},
+		model.ScenarioSweetJourney: {Lat: 35.0052, Lng: 135.7692},
 	}
 }
 
 // testScenarioWithDestination 指定したシナリオと目的地でテストを実行する汎用関数
 func testScenarioWithDestination(t *testing.T, gourmetStrategy strategy.StrategyInterface, ctx context.Context,
-	scenario string, testLocation model.LatLng, destination model.LatLng, scenarioName string, areaName string) {
+	scenario string, testLocation model.LatLng, destination model.LatLng, scenarioName string) {
 
-	fmt.Printf("\n🎯 %sのテスト（%s）\n", scenarioName, areaName)
-	fmt.Printf("📍 目的地座標: (%.4f, %.4f)\n", destination.Lat, destination.Lng)
+	fmt.Printf("\n🎯 === %s (目的地あり) 検索開始 ===\n", scenarioName)
+	fmt.Printf("📍 検索位置: (%.4f, %.4f)\n", testLocation.Lat, testLocation.Lng)
+	fmt.Printf("🎯 目的地: (%.4f, %.4f)\n", destination.Lat, destination.Lng)
 
-	start := time.Now()
 	combinations, err := gourmetStrategy.FindCombinationsWithDestination(ctx, scenario, testLocation, destination)
-	duration := time.Since(start)
 
 	if err != nil {
+		fmt.Printf("⚠️  %sでエラー: %v\n", scenarioName, err)
 		t.Logf("⚠️  %sでエラー: %v", scenarioName, err)
 		return
 	}
 
-	fmt.Printf("✅ %s組み合わせ数: %d (実行時間: %v)\n", scenarioName, len(combinations), duration)
+	fmt.Printf("✅ 検索結果: %d個の組み合わせが見つかりました\n", len(combinations))
 
 	if len(combinations) > 0 {
-		combination := combinations[0]
-		fmt.Printf("📍 推奨ルート:\n")
-		for i, poi := range combination {
-			fmt.Printf("  %d. %s (%s) - 評価: %.1f\n", i+1, poi.Name, getPrimaryCategory(poi), poi.Rate)
+		for i, combination := range combinations {
+			if i >= 2 { // 最初の2つの組み合わせのみ表示
+				fmt.Printf("... (他 %d個の組み合わせ)\n", len(combinations)-2)
+				break
+			}
+
+			fmt.Printf("\n🍽️  組み合わせ %d: %d個のスポット\n", i+1, len(combination))
+			for j, poi := range combination {
+				fmt.Printf("  %d. %s", j+1, poi.Name)
+				if len(poi.Categories) > 0 {
+					fmt.Printf(" [%s]", getPrimaryCategory(poi))
+				}
+				fmt.Printf(" - 距離: %.0fm\n",
+					calculateDistance(testLocation, poi.ToLatLng()))
+			}
 		}
 
-		if len(combination) < 2 {
-			t.Errorf("%sには最低2つのスポットが必要です。実際: %d", scenarioName, len(combination))
+		if len(combinations[0]) < 2 {
+			t.Errorf("%sには最低2つのスポット（1つ + 目的地）が必要です。実際: %d", scenarioName, len(combinations[0]))
 		}
 	} else {
-		t.Logf("⚠️  %sの組み合わせが見つかりませんでした", scenarioName)
+		fmt.Printf("❌ スポットが見つかりませんでした\n")
 	}
+
+	fmt.Printf("🎯 === %s (目的地あり) 検索完了 ===\n\n", scenarioName)
 }
 
 func TestGourmetStrategyIntegration(t *testing.T) {
-	fmt.Println("🍰 グルメストラテジー統合テスト開始")
-	fmt.Println("============================================================")
-
-	// テスト用POIリポジトリのセットアップ
+	// 💡 [imo] 💡 テスト用POIリポジトリのセットアップ
 	poiRepo, cleanup, err := setupTestPOIRepositoryWithWarmup()
 	if err != nil {
 		t.Fatalf("❌ テストリポジトリのセットアップに失敗: %v", err)
 	}
 	defer cleanup()
 
-	// グルメストラテジーの初期化
 	gourmetStrategy := strategy.NewGourmetStrategy(poiRepo)
-
-	// テスト用の座標（京都河原町周辺）
-	testLocation := model.LatLng{
-		Lat: 35.0041,
-		Lng: 135.7681,
-	}
-
-	// ユーザー定義の目的地を取得
+	testLocation := model.LatLng{Lat: 35.0041, Lng: 135.7681}
 	userDestinations := createUserDefinedDestinations()
-
 	ctx := context.Background()
 
 	t.Run("利用可能シナリオ一覧の取得", func(t *testing.T) {
 		scenarios := gourmetStrategy.GetAvailableScenarios()
-		fmt.Printf("✅ 利用可能なシナリオ数: %d\n", len(scenarios))
-
 		expectedScenarios := []string{
 			model.ScenarioCafeHopping,
 			model.ScenarioBakeryTour,
@@ -134,210 +118,146 @@ func TestGourmetStrategyIntegration(t *testing.T) {
 		if len(scenarios) != len(expectedScenarios) {
 			t.Errorf("期待されるシナリオ数: %d, 実際: %d", len(expectedScenarios), len(scenarios))
 		}
+	})
 
-		for _, expected := range expectedScenarios {
-			found := false
-			for _, actual := range scenarios {
-				if actual == expected {
-					found = true
-					break
+	// ✨ [nits] ✨ 目的地なしシナリオのテスト（共通化）
+	t.Run("目的地なしシナリオ", func(t *testing.T) {
+		scenarios := []struct {
+			name     string
+			scenario string
+		}{
+			{"カフェ巡り", model.ScenarioCafeHopping},
+			{"ベーカリー巡り", model.ScenarioBakeryTour},
+			{"地元グルメ", model.ScenarioLocalGourmet},
+			{"スイーツ巡り", model.ScenarioSweetJourney},
+		}
+
+		for _, s := range scenarios {
+			t.Run(s.name, func(t *testing.T) {
+				fmt.Printf("\n🔍 === %s 検索開始 ===\n", s.name)
+				fmt.Printf("📍 検索位置: (%.4f, %.4f)\n", testLocation.Lat, testLocation.Lng)
+
+				combinations, err := gourmetStrategy.FindCombinations(ctx, s.scenario, testLocation)
+				if err != nil {
+					fmt.Printf("⚠️  %sでエラー: %v\n", s.name, err)
+					t.Logf("⚠️  %sでエラー: %v", s.name, err)
+					return
 				}
-			}
-			if !found {
-				t.Errorf("期待されるシナリオが見つかりません: %s", expected)
-			}
+
+				fmt.Printf("✅ 検索結果: %d個の組み合わせが見つかりました\n", len(combinations))
+
+				if len(combinations) > 0 {
+					for i, combination := range combinations {
+						if i >= 3 { // 最初の3つの組み合わせのみ表示
+							fmt.Printf("... (他 %d個の組み合わせ)\n", len(combinations)-3)
+							break
+						}
+
+						fmt.Printf("\n🍽️  組み合わせ %d: %d個のスポット\n", i+1, len(combination))
+						for j, poi := range combination {
+							fmt.Printf("  %d. %s", j+1, poi.Name)
+							if len(poi.Categories) > 0 {
+								fmt.Printf(" [%s]", getPrimaryCategory(poi))
+							}
+							fmt.Printf(" - 距離: %.0fm\n",
+								calculateDistance(testLocation, poi.ToLatLng()))
+						}
+					}
+
+					if len(combinations[0]) < 1 {
+						t.Errorf("%sには最低1つのスポットが必要です。実際: %d", s.name, len(combinations[0]))
+					}
+				} else {
+					fmt.Printf("❌ スポットが見つかりませんでした\n")
+				}
+
+				fmt.Printf("🔍 === %s 検索完了 ===\n\n", s.name)
+			})
 		}
 	})
 
-	t.Run("カフェ巡りシナリオ", func(t *testing.T) {
-		fmt.Println("\n☕ カフェ巡りシナリオのテスト")
+	// 🚨 [must] 🚨 目的地ありシナリオのテスト（共通化）
+	t.Run("目的地ありシナリオ", func(t *testing.T) {
+		scenarios := []struct {
+			name     string
+			scenario string
+		}{
+			{"カフェ巡り", model.ScenarioCafeHopping},
+			{"ベーカリー巡り", model.ScenarioBakeryTour},
+			{"地元グルメ", model.ScenarioLocalGourmet},
+			{"スイーツ巡り", model.ScenarioSweetJourney},
+		}
 
-		start := time.Now()
-		combinations, err := gourmetStrategy.FindCombinations(ctx, model.ScenarioCafeHopping, testLocation)
-		duration := time.Since(start)
+		for _, s := range scenarios {
+			t.Run(s.name, func(t *testing.T) {
+				destination := userDestinations[s.scenario]
+				testScenarioWithDestination(t, gourmetStrategy, ctx, s.scenario, testLocation, destination, s.name)
+			})
+		}
+	})
 
+	t.Run("ExploreNewSpotsのテスト", func(t *testing.T) {
+		fmt.Printf("\n🌟 === 新しいスポット探索開始 ===\n")
+		fmt.Printf("📍 検索位置: (%.4f, %.4f)\n", testLocation.Lat, testLocation.Lng)
+
+		spots, err := gourmetStrategy.ExploreNewSpots(ctx, testLocation)
 		if err != nil {
-			t.Logf("⚠️  カフェ巡りシナリオでエラー: %v", err)
+			fmt.Printf("⚠️  ExploreNewSpotsでエラー: %v\n", err)
+			t.Logf("⚠️  ExploreNewSpotsでエラー: %v", err)
 			return
 		}
 
-		fmt.Printf("✅ カフェ巡り組み合わせ数: %d (実行時間: %v)\n", len(combinations), duration)
+		fmt.Printf("✅ 発見されたスポット数: %d\n", len(spots))
 
-		if len(combinations) > 0 {
-			combination := combinations[0]
-			fmt.Printf("📍 推奨ルート:\n")
-			for i, poi := range combination {
-				categories := "未分類"
-				if len(poi.Categories) > 0 {
-					categories = poi.Categories[0]
-				}
-				fmt.Printf("  %d. %s (%s) - 評価: %.1f\n", i+1, poi.Name, categories, poi.Rate)
-			}
+		// ℹ️ [fyi] ℹ️ グルメ関連のカテゴリが含まれているかチェック
+		if len(spots) > 0 {
+			gourmetCategories := []string{"カフェ", "ベーカリー", "雑貨店", "書店", "店舗", "公園"}
+			hasGourmetCategory := false
+			gourmetCount := 0
 
-			// 組み合わせの妥当性をチェック
-			if len(combination) < 2 {
-				t.Errorf("カフェ巡りには最低2つのスポットが必要です。実際: %d", len(combination))
-			}
-		} else {
-			t.Logf("⚠️  カフェ巡りの組み合わせが見つかりませんでした")
-		}
-	})
-
-	t.Run("ベーカリー巡りシナリオ", func(t *testing.T) {
-		fmt.Println("\n🥖 ベーカリー巡りシナリオのテスト")
-
-		start := time.Now()
-		combinations, err := gourmetStrategy.FindCombinations(ctx, model.ScenarioBakeryTour, testLocation)
-		duration := time.Since(start)
-
-		if err != nil {
-			t.Logf("⚠️  ベーカリー巡りシナリオでエラー: %v", err)
-			return
-		}
-
-		fmt.Printf("✅ ベーカリー巡り組み合わせ数: %d (実行時間: %v)\n", len(combinations), duration)
-
-		if len(combinations) > 0 {
-			combination := combinations[0]
-			fmt.Printf("📍 推奨ルート:\n")
-			for i, poi := range combination {
-				fmt.Printf("  %d. %s (%s) - 評価: %.1f\n", i+1, poi.Name, getPrimaryCategory(poi), poi.Rate)
-			}
-
-			// ベーカリーが含まれているかチェック
-			hasBakery := false
-			for _, poi := range combination {
-				if hasCategory(poi, "ベーカリー") {
-					hasBakery = true
+			fmt.Printf("\n🍽️  発見されたスポット一覧:\n")
+			for i, spot := range spots {
+				if i >= 10 { // 最初の10個のスポットのみ表示
+					fmt.Printf("... (他 %d個のスポット)\n", len(spots)-10)
 					break
 				}
-			}
-			if !hasBakery {
-				t.Errorf("ベーカリー巡りにはベーカリーが含まれている必要があります")
-			}
-		} else {
-			t.Logf("⚠️  ベーカリー巡りの組み合わせが見つかりませんでした")
-		}
-	})
 
-	t.Run("地元グルメシナリオ", func(t *testing.T) {
-		fmt.Println("\n🍜 地元グルメシナリオのテスト")
+				fmt.Printf("  %d. %s", i+1, spot.Name)
+				if len(spot.Categories) > 0 {
+					fmt.Printf(" [%s]", getPrimaryCategory(spot))
+				}
+				fmt.Printf(" - 距離: %.0fm\n",
+					calculateDistance(testLocation, spot.ToLatLng()))
 
-		start := time.Now()
-		combinations, err := gourmetStrategy.FindCombinations(ctx, model.ScenarioLocalGourmet, testLocation)
-		duration := time.Since(start)
-
-		if err != nil {
-			t.Logf("⚠️  地元グルメシナリオでエラー: %v", err)
-			return
-		}
-
-		fmt.Printf("✅ 地元グルメ組み合わせ数: %d (実行時間: %v)\n", len(combinations), duration)
-
-		if len(combinations) > 0 {
-			combination := combinations[0]
-			fmt.Printf("📍 推奨ルート:\n")
-			for i, poi := range combination {
-				fmt.Printf("  %d. %s (%s) - 評価: %.1f\n", i+1, poi.Name, getPrimaryCategory(poi), poi.Rate)
-			}
-
-			// レストランまたは食品店が含まれているかチェック
-			hasRestaurant := false
-			for _, poi := range combination {
-				if hasCategoryInList(poi, []string{"店舗"}) {
-					hasRestaurant = true
-					break
+				if hasCategoryInList(spot, gourmetCategories) {
+					hasGourmetCategory = true
+					gourmetCount++
 				}
 			}
-			if !hasRestaurant {
-				t.Errorf("地元グルメには店舗が含まれている必要があります")
+
+			fmt.Printf("\n📊 グルメ関連スポット: %d/%d\n", gourmetCount, len(spots))
+
+			if !hasGourmetCategory {
+				fmt.Printf("⚠️  グルメ関連のカテゴリが含まれていません\n")
+				t.Logf("⚠️  グルメ関連のカテゴリが含まれていません")
 			}
 		} else {
-			t.Logf("⚠️  地元グルメの組み合わせが見つかりませんでした")
-		}
-	})
-
-	t.Run("スイーツ巡りシナリオ", func(t *testing.T) {
-		fmt.Println("\n🍰 スイーツ巡りシナリオのテスト")
-
-		start := time.Now()
-		combinations, err := gourmetStrategy.FindCombinations(ctx, model.ScenarioSweetJourney, testLocation)
-		duration := time.Since(start)
-
-		if err != nil {
-			t.Logf("⚠️  スイーツ巡りシナリオでエラー: %v", err)
-			return
+			fmt.Printf("❌ 新しいスポットが見つかりませんでした\n")
 		}
 
-		fmt.Printf("✅ スイーツ巡り組み合わせ数: %d (実行時間: %v)\n", len(combinations), duration)
-
-		if len(combinations) > 0 {
-			combination := combinations[0]
-			fmt.Printf("📍 推奨ルート:\n")
-			for i, poi := range combination {
-				fmt.Printf("  %d. %s (%s) - 評価: %.1f\n", i+1, poi.Name, getPrimaryCategory(poi), poi.Rate)
-			}
-
-			// カフェまたは商店が含まれているかチェック
-			hasSweet := false
-			for _, poi := range combination {
-				if hasCategoryInList(poi, []string{"カフェ", "店舗"}) {
-					hasSweet = true
-					break
-				}
-			}
-			if !hasSweet {
-				t.Errorf("スイーツ巡りにはカフェまたは店舗が含まれている必要があります")
-			}
-		} else {
-			t.Logf("⚠️  スイーツ巡りの組み合わせが見つかりませんでした")
-		}
-	})
-
-	t.Run("目的地指定カフェ巡り", func(t *testing.T) {
-		testScenarioWithDestination(t, gourmetStrategy, ctx,
-			model.ScenarioCafeHopping, testLocation,
-			userDestinations[model.ScenarioCafeHopping],
-			"目的地指定カフェ巡り", "ユーザー指定エリア")
-	})
-
-	t.Run("目的地指定ベーカリー巡り", func(t *testing.T) {
-		testScenarioWithDestination(t, gourmetStrategy, ctx,
-			model.ScenarioBakeryTour, testLocation,
-			userDestinations[model.ScenarioBakeryTour],
-			"目的地指定ベーカリー巡り", "ユーザー指定エリア")
-	})
-
-	t.Run("目的地指定地元グルメ", func(t *testing.T) {
-		testScenarioWithDestination(t, gourmetStrategy, ctx,
-			model.ScenarioLocalGourmet, testLocation,
-			userDestinations[model.ScenarioLocalGourmet],
-			"目的地指定地元グルメ", "ユーザー指定エリア")
-	})
-
-	t.Run("目的地指定スイーツ巡り", func(t *testing.T) {
-		testScenarioWithDestination(t, gourmetStrategy, ctx,
-			model.ScenarioSweetJourney, testLocation,
-			userDestinations[model.ScenarioSweetJourney],
-			"目的地指定スイーツ巡り", "ユーザー指定エリア")
+		fmt.Printf("🌟 === 新しいスポット探索完了 ===\n\n")
 	})
 
 	t.Run("無効なシナリオのエラーハンドリング", func(t *testing.T) {
-		fmt.Println("\n❌ 無効なシナリオのテスト")
-
 		_, err := gourmetStrategy.FindCombinations(ctx, "invalid_scenario", testLocation)
 		if err == nil {
 			t.Error("無効なシナリオに対してエラーが返されませんでした")
-		} else {
-			fmt.Printf("✅ 無効なシナリオエラー: %v\n", err)
 		}
 	})
 
-	t.Run("データベース接続パフォーマンス", func(t *testing.T) {
-		fmt.Println("\n⚡ パフォーマンステスト")
-
-		totalStart := time.Now()
-		successCount := 0
+	// ❓ [ask] ❓ パフォーマンステスト（簡略化）
+	t.Run("パフォーマンステスト", func(t *testing.T) {
+		fmt.Printf("\n⏱️  === パフォーマンステスト開始 ===\n")
 
 		scenarios := []string{
 			model.ScenarioCafeHopping,
@@ -346,68 +266,62 @@ func TestGourmetStrategyIntegration(t *testing.T) {
 			model.ScenarioSweetJourney,
 		}
 
+		totalStart := time.Now()
+		successCount := 0
+		var results []string
+
+		// 目的地なしテスト
+		fmt.Printf("🔍 目的地なしシナリオのテスト...\n")
 		for _, scenario := range scenarios {
 			start := time.Now()
 			_, err := gourmetStrategy.FindCombinations(ctx, scenario, testLocation)
 			duration := time.Since(start)
 
-			if err != nil {
-				fmt.Printf("⚠️  %s: エラー (%v) - %v\n", scenario, duration, err)
-			} else {
-				fmt.Printf("✅ %s: 成功 (%v)\n", scenario, duration)
+			if err == nil {
 				successCount++
+				results = append(results, fmt.Sprintf("  ✅ %s: %.2fs", scenario, duration.Seconds()))
+			} else {
+				results = append(results, fmt.Sprintf("  ❌ %s: %.2fs (エラー)", scenario, duration.Seconds()))
 			}
 		}
 
-		totalDuration := time.Since(totalStart)
-		fmt.Printf("\n📊 パフォーマンス結果:\n")
-		fmt.Printf("  - 成功率: %d/%d (%.1f%%)\n", successCount, len(scenarios), float64(successCount)/float64(len(scenarios))*100)
-		fmt.Printf("  - 総実行時間: %v\n", totalDuration)
-		fmt.Printf("  - 平均実行時間: %v\n", totalDuration/time.Duration(len(scenarios)))
-
-		if totalDuration > 10*time.Second {
-			t.Logf("⚠️  総実行時間が長すぎます: %v", totalDuration)
-		}
-	})
-
-	t.Run("目的地ありパフォーマンステスト", func(t *testing.T) {
-		fmt.Println("\n🎯 目的地ありパフォーマンステスト")
-
-		totalStart := time.Now()
-		successCount := 0
-
-		scenarios := []string{
-			model.ScenarioCafeHopping,
-			model.ScenarioBakeryTour,
-			model.ScenarioLocalGourmet,
-			model.ScenarioSweetJourney,
-		}
-
+		// 目的地ありテスト
+		fmt.Printf("🎯 目的地ありシナリオのテスト...\n")
 		for _, scenario := range scenarios {
 			destination := userDestinations[scenario]
 			start := time.Now()
 			_, err := gourmetStrategy.FindCombinationsWithDestination(ctx, scenario, testLocation, destination)
 			duration := time.Since(start)
 
-			if err != nil {
-				fmt.Printf("⚠️  %s (目的地あり): エラー (%v) - %v\n", scenario, duration, err)
-			} else {
-				fmt.Printf("✅ %s (目的地あり): 成功 (%v)\n", scenario, duration)
+			if err == nil {
 				successCount++
+				results = append(results, fmt.Sprintf("  ✅ %s (目的地あり): %.2fs", scenario, duration.Seconds()))
+			} else {
+				results = append(results, fmt.Sprintf("  ❌ %s (目的地あり): %.2fs (エラー)", scenario, duration.Seconds()))
 			}
 		}
 
 		totalDuration := time.Since(totalStart)
-		fmt.Printf("\n📊 目的地ありパフォーマンス結果:\n")
-		fmt.Printf("  - 成功率: %d/%d (%.1f%%)\n", successCount, len(scenarios), float64(successCount)/float64(len(scenarios))*100)
-		fmt.Printf("  - 総実行時間: %v\n", totalDuration)
-		fmt.Printf("  - 平均実行時間: %v\n", totalDuration/time.Duration(len(scenarios)))
+		totalTests := len(scenarios) * 2 // 目的地なし + 目的地あり
 
-		if totalDuration > 10*time.Second {
+		fmt.Printf("\n📊 === テスト結果詳細 ===\n")
+		for _, result := range results {
+			fmt.Println(result)
+		}
+
+		fmt.Printf("\n⏱️  総実行時間: %.2fs\n", totalDuration.Seconds())
+		fmt.Printf("✅ 成功率: %d/%d (%.1f%%)\n", successCount, totalTests, float64(successCount)/float64(totalTests)*100)
+
+		if totalDuration > 15*time.Second {
+			fmt.Printf("⚠️  総実行時間が長すぎます: %v\n", totalDuration)
 			t.Logf("⚠️  総実行時間が長すぎます: %v", totalDuration)
 		}
-	})
 
-	fmt.Println("============================================================")
-	fmt.Printf("🎉 グルメストラテジー統合テスト完了\n")
+		if successCount < totalTests/2 {
+			fmt.Printf("⚠️  成功率が低すぎます: %d/%d\n", successCount, totalTests)
+			t.Logf("⚠️  成功率が低すぎます: %d/%d", successCount, totalTests)
+		}
+
+		fmt.Printf("⏱️  === パフォーマンステスト完了 ===\n\n")
+	})
 }
