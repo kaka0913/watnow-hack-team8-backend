@@ -227,59 +227,159 @@ func (s *GourmetStrategy) findCafeHoppingCombinations(ctx context.Context, userL
 // findBakeryTourCombinations はベーカリー巡りシナリオの詳細ロジックを実装
 // ロジック: [① ベーカリー A] → [② 公園] → [③ ベーカリー B]
 func (s *GourmetStrategy) findBakeryTourCombinations(ctx context.Context, userLocation model.LatLng) ([][]*model.POI, error) {
-	// Step 1: 評価の高いベーカリーを選択
-	bakeries, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, []string{"ベーカリー"}, 1500, 10)
-	if err != nil {
-		return nil, fmt.Errorf("ベーカリー検索に失敗: %w", err)
-	}
-	if len(bakeries) < 2 {
-		return nil, errors.New("ルートに必要なベーカリーが見つかりませんでした")
-	}
+    // Step 1: 評価の高いベーカリーを選択（段階的に探索範囲を拡大）
+    bakeries, err := s.poiRepo.FindNearbyByCategories(ctx, userLocation, []string{"ベーカリー"}, 1500, 10)
+    if err != nil {
+        return nil, fmt.Errorf("ベーカリー検索に失敗: %w", err)
+    }
+    var bakeryA *model.POI
+    if len(bakeries) > 0 {
+        bakeryA = helper.FindHighestRated(bakeries)
+    } else {
+        // ベーカリーが見つからない場合はより広い範囲で店舗カテゴリも含める
+        bakeries, err = s.poiRepo.FindNearbyByCategories(ctx, userLocation, []string{"店舗"}, 2500, 15)
+        if err != nil {
+            return nil, fmt.Errorf("拡張ベーカリー検索に失敗: %w", err)
+        }
+        if len(bakeries) > 0 {
+            bakeryA = bakeries[0]
+        } else {
+            // 最後の手段：観光名所カテゴリで検索
+            bakeries, err = s.poiRepo.FindNearbyByCategories(ctx, userLocation, []string{"観光名所"}, 4000, 20)
+            if err != nil {
+                return nil, fmt.Errorf("最終ベーカリー検索に失敗: %w", err)
+            }
+            if len(bakeries) > 0 {
+                bakeryA = bakeries[0]
+            } else {
+                return nil, errors.New("ベーカリーが見つかりませんでした")
+            }
+        }
+    }
 
-	bakeryA := helper.FindHighestRated(bakeries)
-	filteredBakeries := helper.RemovePOI(bakeries, bakeryA)
-	bakeryB := helper.FindHighestRated(filteredBakeries)
+    // Step 2: ベーカリーB候補を検索（段階的に探索範囲を拡大）
+    bakeryALocation := bakeryA.ToLatLng()
+    otherBakeries, err := s.poiRepo.FindNearbyByCategories(ctx, bakeryALocation, []string{"ベーカリー"}, 1200, 10)
+    if err != nil {
+        return nil, fmt.Errorf("2つ目のベーカリー検索に失敗: %w", err)
+    }
 
-	// Step 2: 2つのベーカリーの中間にある公園を選択
-	bakeryALocation := bakeryA.ToLatLng()
-	bakeryBLocation := bakeryB.ToLatLng()
+    // ベーカリーAを除外
+    filteredBakeries := helper.RemovePOI(otherBakeries, bakeryA)
+    var bakeryB *model.POI
+    if len(filteredBakeries) > 0 {
+        bakeryB = helper.FindHighestRated(filteredBakeries)
+    } else {
+        // 2つ目のベーカリーが見つからない場合はより広い範囲で店舗カテゴリも含める
+        otherBakeries, err = s.poiRepo.FindNearbyByCategories(ctx, bakeryALocation, []string{"店舗"}, 2000, 15)
+        if err != nil {
+            return nil, fmt.Errorf("拡張2つ目ベーカリー検索に失敗: %w", err)
+        }
+        // ベーカリーAを除外
+        filteredBakeries = helper.RemovePOI(otherBakeries, bakeryA)
+        if len(filteredBakeries) > 0 {
+            bakeryB = filteredBakeries[0]
+        } else {
+            // 最後の手段：観光名所カテゴリで検索
+            otherBakeries, err = s.poiRepo.FindNearbyByCategories(ctx, bakeryALocation, []string{"観光名所"}, 3500, 20)
+            if err == nil && len(otherBakeries) > 0 {
+                // ベーカリーAを除外
+                filteredBakeries = helper.RemovePOI(otherBakeries, bakeryA)
+                if len(filteredBakeries) > 0 {
+                    bakeryB = filteredBakeries[0]
+                }
+            }
+        }
+    }
 
-	// 中間地点を計算
-	midLat := (bakeryALocation.Lat + bakeryBLocation.Lat) / 2
-	midLng := (bakeryALocation.Lng + bakeryBLocation.Lng) / 2
-	midLocation := model.LatLng{Lat: midLat, Lng: midLng}
+    // Step 3: 2つのベーカリーの中間にある公園を選択（段階的に探索範囲を拡大）
+    var midLocation model.LatLng
+    if bakeryB != nil {
+        bakeryBLocation := bakeryB.ToLatLng()
+        // 中間地点を計算
+        midLat := (bakeryALocation.Lat + bakeryBLocation.Lat) / 2
+        midLng := (bakeryALocation.Lng + bakeryBLocation.Lng) / 2
+        midLocation = model.LatLng{Lat: midLat, Lng: midLng}
+    } else {
+        midLocation = bakeryALocation
+    }
 
-	parks, err := s.poiRepo.FindNearbyByCategories(ctx, midLocation, []string{"公園"}, 1000, 10)
-	if err != nil {
-		return nil, fmt.Errorf("公園検索に失敗: %w", err)
-	}
+    parks, err := s.poiRepo.FindNearbyByCategories(ctx, midLocation, []string{"公園"}, 1000, 10)
+    if err != nil {
+        return nil, fmt.Errorf("公園検索に失敗: %w", err)
+    }
 
-	var park *model.POI
-	if len(parks) > 0 {
-		helper.SortByDistanceFromLocation(midLocation, parks)
-		park = parks[0]
-	}
+    // ベーカリーAとBを除外
+    filteredParks := helper.RemovePOI(parks, bakeryA)
+    if bakeryB != nil {
+        filteredParks = helper.RemovePOI(filteredParks, bakeryB)
+    }
 
-	// 組み合わせを生成
-	var combinations [][]*model.POI
-	if park != nil {
-		combination := []*model.POI{bakeryA, park, bakeryB}
-		if s.poiSearchHelper.ValidateCombination(combination, 0, false) {
-			combinations = append(combinations, combination)
-		}
-	} else {
-		// 公園が見つからない場合はベーカリー2つのみ
-		combination := []*model.POI{bakeryA, bakeryB}
-		if s.poiSearchHelper.ValidateCombination(combination, 0, false) {
-			combinations = append(combinations, combination)
-		}
-	}
+    var park *model.POI
+    if len(filteredParks) > 0 {
+        helper.SortByDistanceFromLocation(midLocation, filteredParks)
+        park = filteredParks[0]
+    } else {
+        // 公園が見つからない場合はより広い範囲で観光名所も含める
+        parks, err = s.poiRepo.FindNearbyByCategories(ctx, midLocation, []string{"観光名所", "店舗"}, 1500, 15)
+        if err != nil {
+            return nil, fmt.Errorf("拡張公園検索に失敗: %w", err)
+        }
+        
+        // ベーカリーAとBを除外
+        filteredParks = helper.RemovePOI(parks, bakeryA)
+        if bakeryB != nil {
+            filteredParks = helper.RemovePOI(filteredParks, bakeryB)
+        }
+        
+        if len(filteredParks) > 0 {
+            helper.SortByDistanceFromLocation(midLocation, filteredParks)
+            park = filteredParks[0]
+        } else {
+            // 最後の手段：観光名所カテゴリで検索
+            parks, err = s.poiRepo.FindNearbyByCategories(ctx, midLocation, []string{"観光名所"}, 2500, 20)
+            if err == nil && len(parks) > 0 {
+                // ベーカリーAとBを除外
+                filteredParks = helper.RemovePOI(parks, bakeryA)
+                if bakeryB != nil {
+                    filteredParks = helper.RemovePOI(filteredParks, bakeryB)
+                }
+                if len(filteredParks) > 0 {
+                    park = filteredParks[0]
+                }
+            }
+        }
+    }
 
-	if len(combinations) == 0 {
-		return nil, errors.New("ベーカリー巡りの組み合わせが見つかりませんでした")
-	}
+    // 組み合わせを生成（条件を緩和して見つけやすくする）
+    var combinations [][]*model.POI
 
-	return combinations, nil
+    // まず理想的な組み合わせを試行
+    if bakeryB != nil && park != nil {
+        combination := []*model.POI{bakeryA, park, bakeryB}
+        combinations = append(combinations, combination)
+    } else if bakeryB != nil {
+        // 公園が見つからない場合はベーカリー2つのみ
+        combination := []*model.POI{bakeryA, bakeryB}
+        combinations = append(combinations, combination)
+    } else if park != nil {
+        // ベーカリーBが見つからない場合はベーカリーAと公園のみ
+        combination := []*model.POI{bakeryA, park}
+        combinations = append(combinations, combination)
+    }
+
+    // 組み合わせが見つからない場合は、ベーカリーAのみでも提案
+    if len(combinations) == 0 {
+        combination := []*model.POI{bakeryA}
+        combinations = append(combinations, combination)
+    }
+
+    // nature_strategy.goと同様のエラーハンドリングを追加
+    if len(combinations) == 0 {
+        return nil, errors.New("ベーカリー巡りの組み合わせが見つかりませんでした")
+    }
+
+    return combinations, nil
 }
 
 // findLocalGourmetCombinations は地元グルメシナリオの詳細ロジックを実装
