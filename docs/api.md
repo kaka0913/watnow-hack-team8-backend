@@ -177,7 +177,81 @@ erDiagram
 
 ---
 
-### 2. ルートの再計算
+### 2. ルート提案の確定・保存
+
+- `POST /routes/proposals/:id`
+- **Path Parameters**:
+  - `id`: 確定したい一時提案ID（例: `temp_prop_1a2b3c`）
+
+- **Request Body**:
+
+```json
+{
+  "selected_proposal": {
+    "proposal_id": "temp_prop_1a2b3c",
+    "user_modifications": { // ユーザーがカスタマイズした内容（任意）
+      "custom_title": "私だけの特別な散歩道", // ユーザーがタイトルを変更した場合
+      "additional_notes": "友達と一緒に歩く予定" // メモやコメント
+    }
+  },
+  "user_context": { // 提案確定時のコンテキスト情報
+    "selected_time": "2024-01-20T14:30:00Z", // 実際に散歩予定の日時
+    "weather_preference": "sunny", // 天候の希望
+    "companion_type": "friends" // "solo", "friends", "family", "partner"
+  }
+}
+```
+
+- **Response Body (201 Created)**:
+
+```json
+{
+  "status": "success",
+  "confirmed_route": {
+    "route_id": "route_12345abcde", // 正式なルートID（確定後）
+    "proposal_id": "temp_prop_1a2b3c", // 元の一時提案ID
+    "title": "私だけの特別な散歩道",
+    "estimated_duration_minutes": 45,
+    "estimated_distance_meters": 2100,
+    "theme": "gourmet",
+    "status": "confirmed", // "confirmed", "in_progress", "completed"
+    "created_at": "2024-01-20T10:30:00Z",
+    "scheduled_at": "2024-01-20T14:30:00Z", // 予定実行時刻
+    "navigation_steps": [
+      // ... 確定したナビゲーションステップ
+    ],
+    "route_polyline": "o~y_I}nveYE~@qK`AyAdAo@~EaB`Be@",
+    "generated_story": "昭和の香りが漂う商店街を抜け、隠れた名店で地元の人々との出会いを楽しむ散歩です。",
+    "sharing_url": "https://befree-app.com/routes/route_12345abcde" // 共有用URL
+  }
+}
+```
+
+- **Error Response (404 Not Found)**:
+
+```json
+{
+  "error": "proposal_not_found",
+  "message": "指定された提案ID 'temp_prop_1a2b3c' が見つかりません。提案の有効期限が切れているか、無効なIDです。"
+}
+```
+
+- **Error Response (400 Bad Request)**:
+
+```json
+{
+  "error": "invalid_request",
+  "message": "リクエストの形式が正しくありません。",
+  "details": [
+    "proposal_id は必須です",
+    "selected_time は有効な日時形式である必要があります"
+  ]
+}
+```
+
+---
+
+### 3. ルートの再計算
 
 - `POST /routes/recalculate`
 - **Request Body**:
@@ -224,7 +298,7 @@ erDiagram
 
 ---
 
-### 3. 散歩の記録を投稿
+### 4. 散歩の記録を投稿
 
 - `POST /walks`
 - **Request Body**:
@@ -256,7 +330,7 @@ erDiagram
 ```
 
 
-### 4. ハニカムマップのデータを取得
+### 5. ハニカムマップのデータを取得
 
 - `GET /walks`
 - **Query Parameters**:
@@ -318,7 +392,7 @@ erDiagram
 
 ---
 
-### 5. 特定の散歩の詳細データを取得
+### 6. 特定の散歩の詳細データを取得
 
 ユーザーがマップ上のピンをタップした際に、その散歩の詳細（追体験用データ）を取得します。
 
