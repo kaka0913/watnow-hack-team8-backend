@@ -106,11 +106,11 @@ func main() {
 	// Dependency injection
 	walksRepo := repository.NewSupabaseWalksRepository(supabaseClient)
 	walksUsecase := usecase.NewWalksUsecase(walksRepo)
-	walksHandler := handler.NewWalksHandler(walksUsecase)
+	firestoreRepo := repository.NewFirestoreRouteProposalRepository(firestoreClient.GetClient())
+	walksHandler := handler.NewWalksHandler(walksUsecase, firestoreRepo)
 
 	poiRepo := repository.NewPostgresPOIsRepository(postgresClient)
 	routeSuggestionService := service.NewRouteSuggestionService(directionsProvider, poiRepo)
-	firestoreRepo := repository.NewFirestoreRouteProposalRepository(firestoreClient.GetClient())
 	routeProposalUseCase := usecase.NewRouteProposalUseCase(routeSuggestionService, firestoreRepo, storyGenerationRepo)
 	
 	routeRecalculateService := service.NewRouteRecalculateService(directionsProvider, poiRepo)
@@ -130,9 +130,9 @@ func main() {
 	// Walks API エンドポイント
 	walks := r.Group("/walks")
 	{
-		walks.POST("", walksHandler.CreateWalk)           // POST /walks
-		walks.GET("", walksHandler.GetWalksByBoundingBox) // GET /walks?bbox=...
-		walks.GET("/:id", walksHandler.GetWalkDetail)     // GET /walks/:id
+		walks.POST("", walksHandler.CreateWalk)     // POST /walks
+		walks.GET("", walksHandler.GetWalks)        // GET /walks - Firestoreから全てのルート提案を取得
+		walks.GET("/:id", walksHandler.GetWalkDetail) // GET /walks/:id
 	}
 
 	// Route Proposals API エンドポイント
