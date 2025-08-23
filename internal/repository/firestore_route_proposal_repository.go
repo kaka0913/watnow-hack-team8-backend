@@ -191,3 +191,30 @@ func (r *FirestoreRouteProposalRepository) convertToNavigationSteps(route *model
 
 	return steps
 }
+
+// UpdateRouteProposal は指定されたproposal_idのルート提案を上書き更新する（TTLなし）
+func (r *FirestoreRouteProposalRepository) UpdateRouteProposal(ctx context.Context, proposalID string, suggestedRoute *model.SuggestedRoute, theme, title, story string) error {
+	log.Printf("🔄 ルート提案上書き更新開始 (ID: %s)", proposalID)
+
+	collection := r.client.Collection("routeProposals")
+	doc := collection.Doc(proposalID)
+
+	// 上書き用のRouteProposalを構築（TTLフィールドを削除）
+	routeProposal := &model.RouteProposal{
+		ProposalID:      proposalID,
+		Theme:           theme,
+		Title:           title,
+		GeneratedStory:  story,
+		NavigationSteps: r.convertToNavigationSteps(suggestedRoute),
+		// TTLフィールドを削除（永続化）
+	}
+
+	// Firestoreに上書き保存
+	_, err := doc.Set(ctx, routeProposal)
+	if err != nil {
+		return fmt.Errorf("firestore上書き更新に失敗: %w", err)
+	}
+
+	log.Printf("✅ ルート提案上書き更新完了 (ID: %s)", proposalID)
+	return nil
+}
