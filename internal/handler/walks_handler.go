@@ -2,11 +2,10 @@ package handler
 
 import (
 	"net/http"
-	"strconv"
-	"strings"
 
 	"Team8-App/internal/usecase"
 	"Team8-App/internal/domain/model"
+	"Team8-App/internal/repository"
 
 	"github.com/gin-gonic/gin"
 )
@@ -14,12 +13,14 @@ import (
 // WalksHandler 散歩記録に関するHTTPハンドラー
 type WalksHandler struct {
 	walksUsecase usecase.WalksUsecase
+	firestoreRepo *repository.FirestoreRouteProposalRepository
 }
 
 // NewWalksHandler WalksHandlerの新しいインスタンスを作成
-func NewWalksHandler(walksUsecase usecase.WalksUsecase) *WalksHandler {
+func NewWalksHandler(walksUsecase usecase.WalksUsecase, firestoreRepo *repository.FirestoreRouteProposalRepository) *WalksHandler {
 	return &WalksHandler{
-		walksUsecase: walksUsecase,
+		walksUsecase:  walksUsecase,
+		firestoreRepo: firestoreRepo,
 	}
 }
 
@@ -50,72 +51,33 @@ func (h *WalksHandler) CreateWalk(c *gin.Context) {
 	c.JSON(http.StatusCreated, response)
 }
 
-// GetWalksByBoundingBox GET /walks - 境界ボックス内の散歩記録一覧を取得
-func (h *WalksHandler) GetWalksByBoundingBox(c *gin.Context) {
-	// クエリパラメータの解析
-	bbox := c.Query("bbox")
-	if bbox == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "missing_parameter",
-			"message": "bbox parameter is required (format: min_lng,min_lat,max_lng,max_lat)",
-		})
-		return
-	}
-
-	// bbox の解析
-	coords := strings.Split(bbox, ",")
-	if len(coords) != 4 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_parameter",
-			"message": "bbox must contain 4 coordinates: min_lng,min_lat,max_lng,max_lat",
-		})
-		return
-	}
-
-	minLng, err := strconv.ParseFloat(coords[0], 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_parameter",
-			"message": "Invalid min_lng value",
-		})
-		return
-	}
-
-	minLat, err := strconv.ParseFloat(coords[1], 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_parameter",
-			"message": "Invalid min_lat value",
-		})
-		return
-	}
-
-	maxLng, err := strconv.ParseFloat(coords[2], 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_parameter",
-			"message": "Invalid max_lng value",
-		})
-		return
-	}
-
-	maxLat, err := strconv.ParseFloat(coords[3], 64)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error":   "invalid_parameter",
-			"message": "Invalid max_lat value",
-		})
-		return
-	}
-
-	// ユースケース層で処理
-	walks, err := h.walksUsecase.GetWalksByBoundingBox(c.Request.Context(), minLng, minLat, maxLng, maxLat)
+// GetWalks GET /walks - Firestoreから全てのルート提案を取得
+func (h *WalksHandler) GetWalks(c *gin.Context) {
+	// Firestoreから全てのルート提案を取得
+	routeProposals, err := h.firestoreRepo.GetAllRouteProposals(c.Request.Context())
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error":   "internal_error",
-			"message": "Failed to get walks: " + err.Error(),
+			"message": "Failed to get route proposals: " + err.Error(),
 		})
 		return
+	}
+
+	walks := make([]model.WalkSummary, len(routeProposals))
+	for i, proposal := range routeProposals {
+		walks[i] = model.WalkSummary{
+			ID:              proposal.ProposalID,
+			Title:           proposal.Title,
+			AreaName:        "京都市", // デフォルト値（必要に応じて動的に設定）
+			Date:            "", // 日付情報がない場合は空文字
+			Summary:         proposal.GeneratedStory, // 生成された物語を要約として使用
+			DurationMinutes: proposal.EstimatedDurationMinutes,
+			DistanceMeters:  proposal.EstimatedDistanceMeters,
+			Tags:            []string{proposal.Theme}, // テーマをタグとして使用
+			StartLocation:   nil, // 開始位置は不明
+			EndLocation:     nil, // 終了位置は不明
+			RoutePolyline:   proposal.RoutePolyline,
+		}
 	}
 
 	// レスポンスの作成

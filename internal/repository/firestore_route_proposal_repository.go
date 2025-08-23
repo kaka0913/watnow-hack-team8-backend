@@ -191,3 +191,56 @@ func (r *FirestoreRouteProposalRepository) convertToNavigationSteps(route *model
 
 	return steps
 }
+
+// UpdateRouteProposal は指定されたproposal_idのルート提案を上書き更新する（TTLなし）
+func (r *FirestoreRouteProposalRepository) UpdateRouteProposal(ctx context.Context, proposalID string, suggestedRoute *model.SuggestedRoute, theme, title, story string) error {
+	log.Printf("🔄 ルート提案上書き更新開始 (ID: %s)", proposalID)
+
+	collection := r.client.Collection("routeProposals")
+	doc := collection.Doc(proposalID)
+
+	// 上書き用のRouteProposalを構築（TTLフィールドを削除）
+	routeProposal := &model.RouteProposal{
+		ProposalID:      proposalID,
+		Theme:           theme,
+		Title:           title,
+		GeneratedStory:  story,
+		NavigationSteps: r.convertToNavigationSteps(suggestedRoute),
+		// TTLフィールドを削除（永続化）
+	}
+
+	// Firestoreに上書き保存
+	_, err := doc.Set(ctx, routeProposal)
+	if err != nil {
+		return fmt.Errorf("firestore上書き更新に失敗: %w", err)
+	}
+
+	log.Printf("✅ ルート提案上書き更新完了 (ID: %s)", proposalID)
+	return nil
+}
+
+// GetAllRouteProposals はFirestoreの全てのルート提案を取得する（GET /walks用）
+func (r *FirestoreRouteProposalRepository) GetAllRouteProposals(ctx context.Context) ([]*model.RouteProposal, error) {
+	log.Printf("📖 全ルート提案取得開始")
+
+	docs, err := r.client.Collection("routeProposals").Documents(ctx).GetAll()
+	if err != nil {
+		return nil, fmt.Errorf("ルート提案一覧の取得に失敗しました: %w", err)
+	}
+
+	var proposals []*model.RouteProposal
+	for _, doc := range docs {
+		var firestoreData model.FirestoreRouteProposal
+		if err := doc.DataTo(&firestoreData); err != nil {
+			log.Printf("⚠️ データ変換エラー (ID: %s): %v", doc.Ref.ID, err)
+			continue // エラーのあるドキュメントはスキップ
+		}
+
+		// RouteProposalに変換
+		proposal := firestoreData.ToRouteProposal(doc.Ref.ID)
+		proposals = append(proposals, proposal)
+	}
+
+	log.Printf("✅ 全ルート提案取得完了: %d件", len(proposals))
+	return proposals, nil
+}
