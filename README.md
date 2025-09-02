@@ -14,19 +14,11 @@ Team8 の散歩アプリ用バックエンド＋インフラ用のリポジト�
 - **AI による物語性の付与**  
    ロジックによって構築されたルートに対し、**Gemini API**を活用してコンテキストに合わせた物語を生成・付与します。ルート、経由地の特徴、天候や時間帯といったリアルタイム情報を組み合わせることで、散歩に感情的な深みと楽しさを加えます。
 
-- **複数　テーマとモード**  
+- **複数のテーマとモード**  
    グルメ、自然、歴史・文化、アートなど、様々な散歩テーマに対応。目的地までの道のりを豊かにする「寄り道モード」と、時間を決めて未知の出会いを楽しむ「お散歩モード」を提供。
 
 ## 🏗️ システムアーキテクチャ
 ![Befree System Architecture](Befree.png)
-
-#### 技術スタック
-
-- **言語**: Go (標準ライブラリベース + Gin)
-- **デプロイ**: Google Cloud Run
-- **データベース**: Supabase (PostgreSQL + PostGIS)
-- **インフラ**: Terraform (Infrastructure as Code)
-- **外部 API**: Google Maps API, Gemini API
 
 #### 主要な使用パッケージ
 
@@ -34,19 +26,6 @@ Team8 の散歩アプリ用バックエンド＋インフラ用のリポジト�
 - **supabase-community/supabase-go** (v0.0.4) - データベース接続
 - **paulmach/orb** (v0.11.1) - 地理情報処理
 - **cloud.google.com/go/firestore** (v1.18.0) - Firestore 接続
-
-## 🚀 API エンドポイント
-
-### ルート提案
-
-- `POST /routes/proposals` - 散歩ルート提案
-- `POST /routes/recalculate` - ルート再計算
-
-### 歩行履歴
-
-- `GET /walks` - 歩行履歴一覧取得
-- `POST /walks` - 歩行履歴登録
-- `GET /walks/:id` - 特定の歩行履歴取得
 
 ## 🏁 クイックスタート
 
@@ -115,7 +94,7 @@ docker build -t team8-app .
 docker run -p 8080:8080 --env-file .env team8-app
 ```
 
-## 🏗️ プロジェクト構造
+## 🗺️ プロジェクト構造
 
 **クリーンアーキテクチャ**を採用しています。
 
